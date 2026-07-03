@@ -26,9 +26,9 @@
 
 当前版本 APK：
 
-- 官方下载：[zhujian-v1.0.8.apk](https://raw.githubusercontent.com/netkr/zhujian/main/zhujian-v1.0.8.apk)
-- 国内加速备用：[gh-proxy.com](https://gh-proxy.com/https://raw.githubusercontent.com/netkr/zhujian/main/zhujian-v1.0.8.apk)
-- 国内加速备用：[ghfast.top](https://ghfast.top/https://raw.githubusercontent.com/netkr/zhujian/main/zhujian-v1.0.8.apk)
+- 官方下载：[zhujian-v1.0.9.apk](https://raw.githubusercontent.com/netkr/zhujian/main/zhujian-v1.0.9.apk)
+- 国内加速备用：[gh-proxy.com](https://gh-proxy.com/https://raw.githubusercontent.com/netkr/zhujian/main/zhujian-v1.0.9.apk)
+- 国内加速备用：[ghfast.top](https://ghfast.top/https://raw.githubusercontent.com/netkr/zhujian/main/zhujian-v1.0.9.apk)
 
 加速链接由第三方代理提供，仅用于公开 APK 下载。如果链接失效，请优先使用官方下载。
 
