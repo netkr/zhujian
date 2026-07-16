@@ -26,8 +26,8 @@
 
 当前版本 APK：
 
-- 官方下载：[zhujian-rn-v1.4.11.apk](https://github.com/netkr/zhujian/releases/download/v1.4.11/zhujian-rn-v1.4.11.apk)
-- 国内加速备用：[ghfast.top](https://ghfast.top/https://github.com/netkr/zhujian/releases/download/v1.4.11/zhujian-rn-v1.4.11.apk)
+- 官方下载：[zhujian-rn-v1.4.12.apk](https://github.com/netkr/zhujian/releases/download/v1.4.12/zhujian-rn-v1.4.12.apk)
+- 国内加速备用：[ghfast.top](https://ghfast.top/https://github.com/netkr/zhujian/releases/download/v1.4.12/zhujian-rn-v1.4.12.apk)
 
 加速链接由第三方代理提供，仅用于公开 APK 下载。如果链接失效，请优先使用官方下载。
 
