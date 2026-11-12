@@ -743,12 +743,35 @@ export default function App() {
       let invalid = 0;
       let duplicates = 0;
       await db.withTransactionAsync(async () => {
+        // 内容查重（与 import_key/行序无关）：7 个业务列完全相同即视为重复。
+        // 归一化：金额 Number(x).toFixed(2)（与导出口径一致）；库侧 note/secondary/account 的 NULL 统一按空串比较。
+        const normalizeDupKey = (
+          type: string,
+          amount: number,
+          primary: string,
+          secondary: string,
+          note: string | null,
+          date: string,
+          account: string | null,
+        ) => [type, Number(amount).toFixed(2), primary, secondary, note ?? '', date, account ?? ''].join('\u241F');
+        const existingKeys = new Set<string>();
+        const existingRows = await db.getAllAsync<DbRecordRow>(
+          'SELECT type, amount, primary_name, secondary_name, note, date, account FROM records',
+        );
+        for (const row of existingRows) {
+          existingKeys.add(normalizeDupKey(row.type, row.amount, row.primary_name, row.secondary_name, row.note, row.date, row.account));
+        }
         for (const [index, item] of parsed.entries()) {
           if (!item.amount || !item.date) {
             invalid += 1;
             continue;
           }
           const now = new Date().toISOString();
+          const dupKey = normalizeDupKey(item.type, Math.abs(item.amount), item.primary, item.secondary, item.note, item.date, item.account || '本地账户');
+          if (existingKeys.has(dupKey)) {
+            duplicates += 1;
+            continue;
+          }
           const result = await db.runAsync(
             `INSERT OR IGNORE INTO records (type, amount, primary_name, secondary_name, note, date, account, import_key, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -763,8 +786,12 @@ export default function App() {
             now,
             now,
           );
-          if (result.changes > 0) imported += 1;
-          else duplicates += 1;
+          if (result.changes > 0) {
+            imported += 1;
+            existingKeys.add(dupKey);
+          } else {
+            duplicates += 1;
+          }
         }
         await db.runAsync(
           'INSERT INTO import_logs (file_name, imported_count, skipped_count, created_at, message) VALUES (?, ?, ?, ?, ?)',
@@ -1317,15 +1344,23 @@ function AddScreen({
   const activeTemplate = templates.find((template) => template.primary === selectedPrimary) ?? templates[0];
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(editing);
+  const addScrollRef = useRef<ScrollView | null>(null);
+  const pendingDetailsAutoScroll = useRef(false);
   const frequentTemplates = useMemo(() => getFrequentTemplates(records, templates, type, selectedPrimary), [records, selectedPrimary, templates, type]);
   const recentCategories = useMemo(() => getRecentCategories(records, templates, type), [records, templates, type]);
   const visibleTemplates = showAllCategories ? templates : frequentTemplates;
   return (
     <View style={styles.addScreen}>
       <ScrollView
+        ref={addScrollRef}
         style={styles.page}
         contentContainerStyle={[styles.pageBody, styles.addPageBody]}
         keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => {
+          if (!pendingDetailsAutoScroll.current) return;
+          pendingDetailsAutoScroll.current = false;
+          addScrollRef.current?.scrollToEnd({ animated: true });
+        }}
       >
         <Text style={[styles.heroTitle, styles.addHeroTitle]}>{editing ? '修改流水' : '记一笔'}</Text>
         {statusText ? <Text style={styles.bodyText}>{statusText}</Text> : null}
@@ -1414,7 +1449,11 @@ function AddScreen({
           accessibilityRole="button"
           accessibilityState={{ expanded: showMoreDetails }}
           style={styles.addMoreToggle}
-          onPress={() => setShowMoreDetails((value) => !value)}
+          onPress={() => {
+            const next = !showMoreDetails;
+            if (next) pendingDetailsAutoScroll.current = true;
+            setShowMoreDetails(next);
+          }}
         >
           <View style={styles.addMoreCopy}>
             <Text style={styles.addMoreTitle}>备注与日期</Text>
