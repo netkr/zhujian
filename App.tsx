@@ -859,6 +859,7 @@ export default function App() {
             month={month}
             monthRecords={monthRecords}
             summary={summary}
+            statusText={statusText}
             onPrev={() => setMonth(addMonths(month, -1))}
             onNext={() => setMonth(addMonths(month, 1))}
             onCurrent={() => setMonth(startOfMonth(new Date()))}
@@ -908,6 +909,7 @@ export default function App() {
             note={note}
             editing={Boolean(editingRecordId)}
             saving={isSaving}
+            statusText={statusText}
             onType={setEntryType}
             onCategoryShortcut={(primary, secondary) => {
               setSelectedPrimary(primary);
@@ -1003,6 +1005,7 @@ function FlowScreen({
   month,
   monthRecords,
   summary,
+  statusText,
   onPrev,
   onNext,
   onCurrent,
@@ -1015,6 +1018,7 @@ function FlowScreen({
   month: Date;
   monthRecords: LedgerRecord[];
   summary: ReturnType<typeof getSummary>;
+  statusText: string;
   onPrev: () => void;
   onNext: () => void;
   onCurrent: () => void;
@@ -1033,6 +1037,7 @@ function FlowScreen({
         </View>
         <MonthPills styles={styles} label={formatMonth(month)} onPrev={onPrev} onNext={onNext} onCurrent={onCurrent} />
       </View>
+      {statusText ? <Text style={styles.bodyText}>{statusText}</Text> : null}
       <SummaryPanel palette={palette} styles={styles} title="当月支出" summary={summary} count={monthRecords.length} />
       <View style={styles.quickEntryRow}>
         <MotionPressable
@@ -1271,6 +1276,7 @@ function AddScreen({
   note,
   editing,
   saving,
+  statusText,
   onType,
   onCategoryShortcut,
   onPrimary,
@@ -1294,6 +1300,7 @@ function AddScreen({
   note: string;
   editing: boolean;
   saving: boolean;
+  statusText: string;
   onType: (type: EntryType) => void;
   onCategoryShortcut: (primary: string, secondary: string) => void;
   onPrimary: (template: CategoryTemplate) => void;
@@ -1306,6 +1313,7 @@ function AddScreen({
   onDelete: () => void;
 }) {
   const canSave = Boolean(evaluateAmount(amountInput));
+  const amountRoundingHint = /\d\.\d{3,}/.test(amountInput);
   const activeTemplate = templates.find((template) => template.primary === selectedPrimary) ?? templates[0];
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(editing);
@@ -1320,6 +1328,7 @@ function AddScreen({
         keyboardShouldPersistTaps="handled"
       >
         <Text style={[styles.heroTitle, styles.addHeroTitle]}>{editing ? '修改流水' : '记一笔'}</Text>
+        {statusText ? <Text style={styles.bodyText}>{statusText}</Text> : null}
         <PillGroup
           styles={styles}
           wide
@@ -1435,6 +1444,7 @@ function AddScreen({
       </ScrollView>
       <View style={styles.addKeypadDock}>
         <Text style={[styles.amountLarge, type === 'income' && styles.amountIncome]}>¥ {amountInput || '0.00'}</Text>
+        {amountRoundingHint ? <Text style={styles.subtitle}>实际记入 ¥ {trimAmount(evaluateAmount(amountInput))}</Text> : null}
         <Keypad styles={styles} type={type} canSave={canSave} saving={saving} onKey={onKey} onSave={onSave} onAgain={onAgain} />
       </View>
     </View>
@@ -1548,7 +1558,7 @@ function SecurityScreen({
   settings: AppSettings;
   biometricAvailable: boolean;
   onLockMode: (mode: LockMode) => void;
-  onEnablePasscode: (passcode: string) => void;
+  onEnablePasscode: (passcode: string) => Promise<void>;
   onDisablePasscode: () => void;
   onToggleBiometric: () => void;
 }) {
@@ -1574,7 +1584,13 @@ function SecurityScreen({
             placeholderTextColor={styles.placeholderColor.color}
             style={styles.securityInput}
           />
-          <MotionPressable style={styles.securityPrimaryButton} onPress={() => onEnablePasscode(passcode)}>
+          <MotionPressable
+            style={styles.securityPrimaryButton}
+            onPress={async () => {
+              await onEnablePasscode(passcode);
+              if (/^\d{4}$/.test(passcode)) setPasscode('');
+            }}
+          >
             <Text style={styles.securityPrimaryText}>{settings.passcodeEnabled ? '更新' : '开启'}</Text>
           </MotionPressable>
         </View>
@@ -3771,12 +3787,20 @@ function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+function lastDayOfMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
 function addMonths(date: Date, months: number) {
-  return new Date(date.getFullYear(), date.getMonth() + months, Math.min(date.getDate(), 28), date.getHours(), date.getMinutes(), date.getSeconds());
+  const year = date.getFullYear();
+  const month = date.getMonth() + months;
+  return new Date(year, month, Math.min(date.getDate(), lastDayOfMonth(year, month)), date.getHours(), date.getMinutes(), date.getSeconds());
 }
 
 function addYears(date: Date, years: number) {
-  return new Date(date.getFullYear() + years, date.getMonth(), Math.min(date.getDate(), 28), date.getHours(), date.getMinutes(), date.getSeconds());
+  const year = date.getFullYear() + years;
+  const month = date.getMonth();
+  return new Date(year, month, Math.min(date.getDate(), lastDayOfMonth(year, month)), date.getHours(), date.getMinutes(), date.getSeconds());
 }
 
 function addDays(date: Date, days: number) {
