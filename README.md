@@ -6,18 +6,19 @@
 
 ## 特色
 
-- 简约：界面围绕“流水、报表、记一笔、资产、我的”展开，入口清晰，减少不必要的干扰。
-- 实用：支持支出、收入记录，分类管理，月度、年度和总计报表，本地资产概览。
+- 简约：界面围绕“流水、报表、记一笔、我的”展开，入口清晰，减少不必要的干扰。
+- 实用：支持支出、收入记录，一级/二级分类管理，月度、年度和总计报表，本地资产概览。
 - 隐私：APK 不申请联网权限，数据导入、导出和备份都通过 Android 系统文件选择器在本机完成。
 - 安全：支持四位数字密码、系统生物识别、本地备份与加密备份，适合保存个人账本数据。
 
 ## 主要功能
 
-- 手工记账：记录支出、收入、分类、时间和备注。
-- 流水管理：查看、编辑、删除本地账单记录。
-- 报表统计：按月度、年度、总计查看收支趋势和分类排行。
+- 手工记账：记录支出、收入、一级/二级分类、时间和备注。
+- 分类管理：内置常用收支分类，支持一级/二级分类的新增、改名和删除。
+- 流水管理：查看、编辑、删除本地账单记录，可按分类、备注或账户搜索。
+- 报表统计：按月度、年度、总计查看收支趋势、支出分类占比（环形图）和当月每日支出（柱状图）。
 - 资产概览：以本地账户口径汇总收入、支出和余额。
-- 数据导入：支持 CSV/XLSX 表格导入，导入前可预览，重复行会跳过。
+- 数据导入：支持 CSV/XLSX 表格导入，按关键词自动识别分类；同一表格中的重复行会跳过，未识别的分类会在导入结果中提示。
 - 数据导出：支持导出 CSV，便于用表格软件查看或二次整理。
 - 本地备份：支持导出和恢复备份包，导入前会自动创建本机备份。
 - 本地安全：支持本地锁和系统生物识别，降低他人直接查看账本的风险。
@@ -26,8 +27,8 @@
 
 当前版本 APK：
 
-- 官方下载：[zhujian-rn-v1.4.12.apk](https://github.com/netkr/zhujian/releases/download/v1.4.12/zhujian-rn-v1.4.12.apk)
-- 国内加速备用：[ghfast.top](https://ghfast.top/https://github.com/netkr/zhujian/releases/download/v1.4.12/zhujian-rn-v1.4.12.apk)
+- 官方下载：[zhujian-rn-v1.4.14.apk](https://github.com/netkr/zhujian/releases/download/v1.4.14/zhujian-rn-v1.4.14.apk)
+- 国内加速备用：[ghfast.top](https://ghfast.top/https://github.com/netkr/zhujian/releases/download/v1.4.14/zhujian-rn-v1.4.14.apk)
 
 加速链接由第三方代理提供，仅用于公开 APK 下载。如果链接失效，请优先使用官方下载。
 
@@ -52,4 +53,15 @@
 
 ## 项目状态
 
-当前公开仓库主要用于发布 APK 安装包和项目说明。
+仓库包含竹简的源码、项目说明与 APK 安装包，源码基于 React Native（Expo）开发。
+
+## 从源码构建
+
+需要 JDK 与 Android SDK。
+
+```bash
+npm install
+./scripts/build-android.sh        # 默认构建 release APK
+```
+
+`scripts/build-android.sh` 通过环境变量 `JAVA_HOME` 定位 JDK，也可在 `scripts/.local.env` 中配置（该文件不纳入版本控制）。release 签名读取 `release-signing.properties`，该文件不包含在仓库中，需自行准备。

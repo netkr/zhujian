@@ -36,6 +36,9 @@ yarn-error.*
 /release-signing.properties
 /private/
 
+# 本机构建/验证用的本地配置（不入库）
+/scripts/.local.env
+
 # typescript
 *.tsbuildinfo
 

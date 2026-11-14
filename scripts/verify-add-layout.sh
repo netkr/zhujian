@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-adb_bin="${ADB_BIN:-/Users/<user>/Library/Android/sdk/platform-tools/adb}"
+adb_bin="${ADB_BIN:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}/platform-tools/adb}"
 serial="${1:-emulator-5554}"
 package="com.luxn.offlineledger"
 
