@@ -29,10 +29,10 @@ import {
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 import * as XLSX from 'xlsx';
 
-type Tab = 'flow' | 'report' | 'add' | 'assets' | 'mine';
+type Tab = 'flow' | 'report' | 'add' | 'mine';
 type EntryType = 'expense' | 'income';
 type Range = 'month' | 'year' | 'all';
-type SubPage = 'categories' | 'import' | 'security' | 'records' | null;
+type SubPage = 'categories' | 'import' | 'security' | 'records' | 'assets' | null;
 type LockMode = 'immediate' | '5min';
 type LedgerDrilldownFilter = {
   type: EntryType;
@@ -418,9 +418,10 @@ export default function App() {
 
   const setEntryType = (type: EntryType) => {
     const nextTemplates = type === 'expense' ? expenseTemplates : incomeTemplates;
+    const recent = getRecentCategories(records, nextTemplates, type)[0];
     setSelectedType(type);
-    setSelectedPrimary(nextTemplates[0]?.primary ?? '');
-    setSelectedSecondary(nextTemplates[0]?.children[0] ?? '');
+    setSelectedPrimary(recent?.primary ?? nextTemplates[0]?.primary ?? '');
+    setSelectedSecondary(recent?.secondary ?? nextTemplates[0]?.children[0] ?? '');
   };
 
   const startNewRecord = (type?: EntryType) => {
@@ -454,6 +455,14 @@ export default function App() {
     const amount = evaluateAmount(amountInput);
     if (!amount || amount <= 0) {
       Alert.alert('金额无效', '请输入大于 0 的金额。');
+      return;
+    }
+    const editingRecord = editingRecordId
+      ? records.find((item) => item.id === editingRecordId)
+      : null;
+    const secondaryUntouchedInEdit = editingRecord !== null && selectedSecondary === editingRecord.secondary;
+    if (!selectedSecondary && !secondaryUntouchedInEdit) {
+      Alert.alert('缺少二级分类', '请选择二级分类。');
       return;
     }
     const date = new Date(selectedDate);
@@ -877,6 +886,16 @@ export default function App() {
         />
       );
     }
+    if (subPage === 'assets') {
+      return (
+        <AssetsScreen
+          styles={styles}
+          records={records}
+          hidden={assetHidden}
+          onToggle={() => setAssetHidden((value) => !value)}
+        />
+      );
+    }
     switch (tab) {
       case 'flow':
         return (
@@ -891,10 +910,6 @@ export default function App() {
             onNext={() => setMonth(addMonths(month, 1))}
             onCurrent={() => setMonth(startOfMonth(new Date()))}
             onEditRecord={editRecord}
-            onQuickEntry={(type) => {
-              startNewRecord(type);
-              setTab('add');
-            }}
             onOpenAll={() => {
               setLedgerFilter(null);
               setSubPage('records');
@@ -955,15 +970,6 @@ export default function App() {
             onDelete={requestDeleteRecord}
           />
         );
-      case 'assets':
-        return (
-          <AssetsScreen
-            styles={styles}
-            records={records}
-            hidden={assetHidden}
-            onToggle={() => setAssetHidden((value) => !value)}
-          />
-        );
       case 'mine':
         return (
           <MineScreen
@@ -974,6 +980,7 @@ export default function App() {
             onOpenCategories={() => setSubPage('categories')}
             onOpenImport={() => setSubPage('import')}
             onOpenSecurity={() => setSubPage('security')}
+            onOpenLedger={() => setSubPage('assets')}
           />
         );
     }
@@ -1011,6 +1018,7 @@ export default function App() {
         <View style={styles.appShell}>
           <Animated.View style={[styles.content, { opacity: contentOpacity, transform: [{ translateY: contentOffset }] }]}>{screen()}</Animated.View>
           <BottomNav
+            palette={palette}
             styles={styles}
             active={tab}
             onTab={(next) => {
@@ -1037,7 +1045,6 @@ function FlowScreen({
   onNext,
   onCurrent,
   onEditRecord,
-  onQuickEntry,
   onOpenAll,
 }: {
   palette: Palette;
@@ -1050,9 +1057,14 @@ function FlowScreen({
   onNext: () => void;
   onCurrent: () => void;
   onEditRecord: (record: LedgerRecord) => void;
-  onQuickEntry: (type: EntryType) => void;
   onOpenAll: () => void;
 }) {
+  const [query, setQuery] = useState('');
+  const keyword = query.trim().toLowerCase();
+  const matchedRecords = keyword
+    ? monthRecords.filter((record) => [record.primary, record.secondary, record.note, record.date, record.account].join(' ').toLowerCase().includes(keyword))
+    : monthRecords;
+  const visibleRecords = keyword ? matchedRecords : matchedRecords.slice(0, 8);
   const daily = groupByDay(monthRecords.filter((record) => record.type === 'expense'));
   const categories = groupByCategory(monthRecords.filter((record) => record.type === 'expense'));
   return (
@@ -1064,40 +1076,15 @@ function FlowScreen({
         </View>
         <MonthPills styles={styles} label={formatMonth(month)} onPrev={onPrev} onNext={onNext} onCurrent={onCurrent} />
       </View>
+      <TextInput
+        value={query}
+        onChangeText={setQuery}
+        placeholder="搜索分类、备注或日期"
+        placeholderTextColor={styles.placeholderColor.color}
+        style={styles.ledgerSearch}
+      />
       {statusText ? <Text style={styles.bodyText}>{statusText}</Text> : null}
       <SummaryPanel palette={palette} styles={styles} title="当月支出" summary={summary} count={monthRecords.length} />
-      <View style={styles.quickEntryRow}>
-        <MotionPressable
-          accessibilityRole="button"
-          accessibilityLabel="记一笔支出"
-          style={[styles.quickEntryButton, styles.quickEntryExpense]}
-          onPress={() => onQuickEntry('expense')}
-        >
-          <View style={[styles.quickEntryMark, styles.quickEntryExpenseMark]}>
-            <Text style={[styles.quickEntryMarkText, styles.quickEntryExpenseText]}>−</Text>
-          </View>
-          <View style={styles.quickEntryCopy}>
-            <Text style={[styles.quickEntryTitle, styles.quickEntryExpenseText]}>记支出</Text>
-            <Text style={styles.quickEntryHint}>选分类，输入金额</Text>
-          </View>
-          <Text style={[styles.quickEntryArrow, styles.quickEntryExpenseText]}>›</Text>
-        </MotionPressable>
-        <MotionPressable
-          accessibilityRole="button"
-          accessibilityLabel="记一笔收入"
-          style={[styles.quickEntryButton, styles.quickEntryIncome]}
-          onPress={() => onQuickEntry('income')}
-        >
-          <View style={[styles.quickEntryMark, styles.quickEntryIncomeMark]}>
-            <Text style={[styles.quickEntryMarkText, styles.quickEntryIncomeText]}>＋</Text>
-          </View>
-          <View style={styles.quickEntryCopy}>
-            <Text style={[styles.quickEntryTitle, styles.quickEntryIncomeText]}>记收入</Text>
-            <Text style={styles.quickEntryHint}>选分类，输入金额</Text>
-          </View>
-          <Text style={[styles.quickEntryArrow, styles.quickEntryIncomeText]}>›</Text>
-        </MotionPressable>
-      </View>
       <Card styles={styles}>
         <Text style={styles.sectionTitle}>周期概览</Text>
         <PeriodRow styles={styles} title="今天" records={monthRecords.filter((record) => sameDay(record.date, new Date()))} />
@@ -1113,9 +1100,13 @@ function FlowScreen({
       </Card>
       <View style={styles.listTitleRow}>
         <Text style={styles.sectionTitle}>最近流水</Text>
-        <MotionPressable onPress={onOpenAll}><Text style={styles.linkText}>查看全部</Text></MotionPressable>
+        <MotionPressable accessibilityRole="button" accessibilityLabel="查看全部流水" hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }} onPress={onOpenAll}><Text style={styles.linkText}>查看全部</Text></MotionPressable>
       </View>
-      {monthRecords.length ? monthRecords.slice(0, 8).map((record) => <RecordRow key={record.id} styles={styles} record={record} onPress={() => onEditRecord(record)} />) : <EmptyCard styles={styles} title="还没有流水" body="当月暂无流水。历史表格会按月份归档。" />}
+      {visibleRecords.length
+        ? visibleRecords.map((record) => <RecordRow key={record.id} styles={styles} record={record} onPress={() => onEditRecord(record)} />)
+        : keyword
+          ? <EmptyCard styles={styles} title="没有匹配的流水" body="换个关键词再试试。" />
+          : <EmptyCard styles={styles} title="还没有流水" body="当月暂无流水。历史表格会按月份归档。" />}
     </ScrollView>
   );
 }
@@ -1154,7 +1145,7 @@ function LedgerScreen({
         {drilldownFilter ? (
           <View style={styles.ledgerFilterRow}>
             <Text style={styles.ledgerFilterText} numberOfLines={1}>报表筛选：{drilldownFilter.label}</Text>
-            <MotionPressable onPress={onClearDrilldown} accessibilityRole="button">
+            <MotionPressable onPress={onClearDrilldown} accessibilityRole="button" accessibilityLabel="清除报表筛选">
               <Text style={styles.ledgerFilterClear}>清除</Text>
             </MotionPressable>
           </View>
@@ -1409,14 +1400,14 @@ function AddScreen({
             ) : null}
           </View>
           {templates.length > frequentTemplates.length ? (
-            <MotionPressable onPress={() => setShowAllCategories((value) => !value)}>
+            <MotionPressable accessibilityRole="button" accessibilityLabel={showAllCategories ? '收起全部分类' : '展开全部分类'} hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }} onPress={() => setShowAllCategories((value) => !value)}>
               <Text style={styles.linkText}>{showAllCategories ? '收起' : '全部分类'}</Text>
             </MotionPressable>
           ) : null}
         </View>
         <View style={styles.categoryGrid}>
           {visibleTemplates.map((template) => (
-            <MotionPressable key={template.primary} style={styles.categoryGridItem} onPress={() => onPrimary(template)}>
+            <MotionPressable key={template.primary} accessibilityRole="button" accessibilityLabel={`选择${template.primary}分类`} accessibilityState={{ selected: selectedPrimary === template.primary }} style={styles.categoryGridItem} onPress={() => onPrimary(template)}>
               <View
                 style={[
                   styles.categoryCircle,
@@ -1434,6 +1425,10 @@ function AddScreen({
             {activeTemplate.children.map((child) => (
               <MotionPressable
                 key={child}
+                accessibilityRole="button"
+                accessibilityLabel={`选择${child}`}
+                accessibilityState={{ selected: selectedSecondary === child }}
+                hitSlop={{ top: 7, bottom: 7 }}
                 style={[
                   styles.secondaryChip,
                   selectedSecondary === child && (type === 'income' ? styles.secondaryChipActiveIncome : styles.secondaryChipActive),
@@ -1476,7 +1471,7 @@ function AddScreen({
           </View>
         ) : null}
         {editing ? (
-          <MotionPressable style={styles.dangerFullButton} onPress={onDelete}>
+          <MotionPressable accessibilityRole="button" accessibilityLabel="删除当前流水" style={styles.dangerFullButton} onPress={onDelete}>
             <Text style={styles.dangerFullButtonText}>删除流水</Text>
           </MotionPressable>
         ) : null}
@@ -1511,7 +1506,7 @@ function AssetsScreen({
           <Text style={styles.heroTitle}>资产</Text>
           <Text style={styles.subtitle}>本地账户 · 全部流水统计</Text>
         </View>
-        <MotionPressable style={styles.actionButton} onPress={onToggle}>
+        <MotionPressable accessibilityRole="button" accessibilityLabel={hidden ? '显示账户金额' : '隐藏账户金额'} style={styles.actionButton} onPress={onToggle}>
           <Text style={styles.actionButtonText}>{hidden ? '显示金额' : '隐藏金额'}</Text>
         </MotionPressable>
       </View>
@@ -1539,6 +1534,7 @@ function MineScreen({
   onOpenCategories,
   onOpenImport,
   onOpenSecurity,
+  onOpenLedger,
 }: {
   styles: ReturnType<typeof createStyles>;
   settings: AppSettings;
@@ -1547,6 +1543,7 @@ function MineScreen({
   onOpenCategories: () => void;
   onOpenImport: () => void;
   onOpenSecurity: () => void;
+  onOpenLedger: () => void;
 }) {
   const lockSummary = `数字密码${settings.passcodeEnabled ? '已开启' : '未开启'}，指纹锁${settings.biometricEnabled ? '已开启' : '未开启'}，${settings.lockMode === 'immediate' ? '每次进入验证' : '离开 5 分钟后验证'}。`;
   return (
@@ -1554,7 +1551,7 @@ function MineScreen({
       <Text style={styles.heroTitle}>我的</Text>
       <Text style={styles.subtitle}>本机数据、账本和隐私设置</Text>
       <SettingsGroup styles={styles} title="账本">
-        <SettingsInfo styles={styles} icon="ledger" title="本地账本" body="单账本离线模式，所有流水只保存在本机；资产页统计全部本机流水。" />
+        <SettingsRow styles={styles} icon="ledger" title="本地账本" body="单账本离线模式，所有流水只保存在本机；点开查看资产统计。" action="打开" onPress={onOpenLedger} />
         <SettingsRow styles={styles} icon="tag" title="分类管理" body="自定义支出/收入的一级和二级分类模板。" action="打开" onPress={onOpenCategories} />
       </SettingsGroup>
       <SettingsGroup styles={styles} title="启动">
@@ -1624,6 +1621,8 @@ function SecurityScreen({
             style={styles.securityInput}
           />
           <MotionPressable
+            accessibilityRole="button"
+            accessibilityLabel={settings.passcodeEnabled ? '更新数字密码' : '开启数字密码'}
             style={styles.securityPrimaryButton}
             onPress={async () => {
               await onEnablePasscode(passcode);
@@ -1638,16 +1637,16 @@ function SecurityScreen({
             ['5min', '5 分钟后'],
             ['immediate', '每次进入'],
           ].map(([value, label]) => (
-            <MotionPressable key={value} style={[styles.securityModeButton, settings.lockMode === value && styles.securityModeActive]} onPress={() => onLockMode(value as LockMode)}>
+            <MotionPressable key={value} accessibilityRole="button" accessibilityLabel={`${label}自动锁定`} accessibilityState={{ selected: settings.lockMode === value }} style={[styles.securityModeButton, settings.lockMode === value && styles.securityModeActive]} onPress={() => onLockMode(value as LockMode)}>
               <Text style={[styles.securityModeText, settings.lockMode === value && styles.securityModeTextActive]}>{label}</Text>
             </MotionPressable>
           ))}
         </View>
         <View style={styles.securityActions}>
-          <MotionPressable disabled={!biometricAvailable} style={[styles.securityActionButton, !biometricAvailable && styles.keyDisabled]} onPress={onToggleBiometric}>
+          <MotionPressable accessibilityRole="button" accessibilityLabel={settings.biometricEnabled ? '关闭指纹锁' : '开启指纹锁'} disabled={!biometricAvailable} style={[styles.securityActionButton, !biometricAvailable && styles.keyDisabled]} onPress={onToggleBiometric}>
             <Text style={styles.securityActionText}>{settings.biometricEnabled ? '关闭指纹锁' : '开启指纹锁'}</Text>
           </MotionPressable>
-          <MotionPressable disabled={!settings.passcodeEnabled} style={[styles.securityActionButton, !settings.passcodeEnabled && styles.keyDisabled]} onPress={onDisablePasscode}>
+          <MotionPressable accessibilityRole="button" accessibilityLabel="关闭数字锁" disabled={!settings.passcodeEnabled} style={[styles.securityActionButton, !settings.passcodeEnabled && styles.keyDisabled]} onPress={onDisablePasscode}>
             <Text style={[styles.securityActionText, settings.passcodeEnabled && styles.dangerText]}>关闭数字锁</Text>
           </MotionPressable>
         </View>
@@ -1722,13 +1721,13 @@ function CategoryManagerScreen({
       </Card>
       <View style={styles.inlineForm}>
         <TextInput value={newPrimary} onChangeText={setNewPrimary} placeholder="新建一级分类" placeholderTextColor={styles.placeholderColor.color} style={styles.inlineInput} />
-        <MotionPressable style={styles.inlineButton} onPress={() => { onAddPrimary(type, newPrimary); setNewPrimary(''); }}>
+        <MotionPressable accessibilityRole="button" accessibilityLabel="新增一级分类" style={styles.inlineButton} onPress={() => { onAddPrimary(type, newPrimary); setNewPrimary(''); }}>
           <Text style={styles.inlineButtonText}>新增</Text>
         </MotionPressable>
       </View>
       {templates.map((template) => (
         <View key={template.primary} style={[styles.manageCard, selected === template.primary && styles.manageCardActive]}>
-          <MotionPressable style={styles.manageHead} onPress={() => { setSelected(template.primary); setPrimaryName(template.primary); }}>
+          <MotionPressable accessibilityRole="button" accessibilityLabel={`选择${template.primary}`} accessibilityState={{ selected: selected === template.primary }} style={styles.manageHead} onPress={() => { setSelected(template.primary); setPrimaryName(template.primary); }}>
             <View style={styles.recordIcon}><AppIcon name={categoryIcon(template.primary, type)} color={type === 'income' ? styles.incomeText.color : styles.expenseText.color} size={22} /></View>
             <View style={styles.recordMain}>
               <Text style={styles.recordTitle}>{template.primary}</Text>
@@ -1740,17 +1739,17 @@ function CategoryManagerScreen({
             <View style={styles.manageBody}>
               <View style={styles.inlineForm}>
                 <TextInput value={primaryName} onChangeText={setPrimaryName} placeholder="一级分类名称" placeholderTextColor={styles.placeholderColor.color} style={styles.inlineInput} />
-                <MotionPressable style={styles.inlineButton} onPress={() => onRenamePrimary(type, template.primary, primaryName)}>
+                <MotionPressable accessibilityRole="button" accessibilityLabel={`重命名一级分类${template.primary}`} style={styles.inlineButton} onPress={() => onRenamePrimary(type, template.primary, primaryName)}>
                   <Text style={styles.inlineButtonText}>改名</Text>
                 </MotionPressable>
               </View>
               <View style={styles.inlineForm}>
                 <TextInput value={newSecondary} onChangeText={setNewSecondary} placeholder="新建二级分类" placeholderTextColor={styles.placeholderColor.color} style={styles.inlineInput} />
-                <MotionPressable style={styles.inlineButton} onPress={() => { onAddSecondary(type, template.primary, newSecondary); setNewSecondary(''); }}>
+                <MotionPressable accessibilityRole="button" accessibilityLabel={`为${template.primary}新增二级分类`} style={styles.inlineButton} onPress={() => { onAddSecondary(type, template.primary, newSecondary); setNewSecondary(''); }}>
                   <Text style={styles.inlineButtonText}>新增</Text>
                 </MotionPressable>
               </View>
-              <MotionPressable style={styles.outlineFullButton} onPress={() => onDeletePrimary(type, template.primary)}>
+              <MotionPressable accessibilityRole="button" accessibilityLabel={`删除一级分类${template.primary}`} style={styles.outlineFullButton} onPress={() => onDeletePrimary(type, template.primary)}>
                 <Text style={[styles.outlineFullButtonText, styles.dangerText]}>删除一级分类</Text>
               </MotionPressable>
               {active.children.map((child) => (
@@ -1760,14 +1759,14 @@ function CategoryManagerScreen({
                   ) : (
                     <Text style={styles.secondaryRowTitle}>{child}</Text>
                   )}
-                  <Text style={styles.secondaryRowAction} onPress={() => onMoveSecondary(type, template.primary, child, -1)}>↑</Text>
-                  <Text style={styles.secondaryRowAction} onPress={() => onMoveSecondary(type, template.primary, child, 1)}>↓</Text>
+                  <Text accessibilityRole="button" accessibilityLabel={`上移${child}`} style={styles.secondaryRowAction} onPress={() => onMoveSecondary(type, template.primary, child, -1)}>↑</Text>
+                  <Text accessibilityRole="button" accessibilityLabel={`下移${child}`} style={styles.secondaryRowAction} onPress={() => onMoveSecondary(type, template.primary, child, 1)}>↓</Text>
                   {editingSecondary === child ? (
-                    <Text style={styles.secondaryRowAction} onPress={() => { onRenameSecondary(type, template.primary, child, secondaryName); setEditingSecondary(''); }}>存</Text>
+                    <Text accessibilityRole="button" accessibilityLabel="保存名称修改" style={styles.secondaryRowAction} onPress={() => { onRenameSecondary(type, template.primary, child, secondaryName); setEditingSecondary(''); }}>存</Text>
                   ) : (
-                    <Text style={styles.secondaryRowAction} onPress={() => { setEditingSecondary(child); setSecondaryName(child); }}>改</Text>
+                    <Text accessibilityRole="button" accessibilityLabel={`重命名${child}`} style={styles.secondaryRowAction} onPress={() => { setEditingSecondary(child); setSecondaryName(child); }}>改</Text>
                   )}
-                  <Text style={[styles.secondaryRowAction, styles.dangerText]} onPress={() => onDeleteSecondary(type, template.primary, child)}>删</Text>
+                  <Text accessibilityRole="button" accessibilityLabel={`删除二级分类${child}`} style={[styles.secondaryRowAction, styles.dangerText]} onPress={() => onDeleteSecondary(type, template.primary, child)}>删</Text>
                 </View>
               ))}
             </View>
@@ -1799,14 +1798,14 @@ function ImportExportScreen({
         <Text style={styles.sectionTitle}>导入离线表格</Text>
         <Text style={styles.bodyText}>支持 CSV 和 XLSX。使用 Android 系统文件选择器，不申请全盘文件权限。</Text>
         <Text style={styles.bodyText}>必要字段：日期、金额；交易类型、分类、备注可选。导入前会自动生成 CSV 备份，并跳过同一表格中的已导入行。</Text>
-        <MotionPressable style={styles.fullButton} onPress={onImport}>
+        <MotionPressable accessibilityRole="button" accessibilityLabel="选择表格文件" style={styles.fullButton} onPress={onImport}>
           <Text style={styles.fullButtonText}>选择表格</Text>
         </MotionPressable>
       </Card>
       <Card styles={styles}>
         <Text style={styles.sectionTitle}>导出 CSV</Text>
         <Text style={styles.bodyText}>导出全部本地流水，字段包含日期、交易类型、一级分类、二级分类、账户、金额、备注。</Text>
-        <MotionPressable style={styles.outlineFullButton} onPress={onExport}>
+        <MotionPressable accessibilityRole="button" accessibilityLabel="导出全部流水" style={styles.outlineFullButton} onPress={onExport}>
           <Text style={styles.outlineFullButtonText}>导出全部流水</Text>
         </MotionPressable>
       </Card>
@@ -1865,6 +1864,8 @@ function LockScreen({
           {['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '指纹'].map((key) => (
             <MotionPressable
               key={key}
+              accessibilityRole="button"
+              accessibilityLabel={key === '⌫' ? '删除' : key === '指纹' ? '指纹解锁' : `数字 ${key}`}
               style={styles.lockKey}
               onPress={async () => {
                 if (key === '⌫') {
@@ -1940,12 +1941,11 @@ function SummaryPanel({
   );
 }
 
-function BottomNav({ styles, active, onTab }: { styles: ReturnType<typeof createStyles>; active: Tab; onTab: (tab: Tab) => void }) {
+function BottomNav({ palette, styles, active, onTab }: { palette: Palette; styles: ReturnType<typeof createStyles>; active: Tab; onTab: (tab: Tab) => void }) {
   const tabs: Array<[Tab, string]> = [
     ['flow', '流水'],
     ['report', '报表'],
     ['add', '记一笔'],
-    ['assets', '资产'],
     ['mine', '我的'],
   ];
   return (
@@ -1960,7 +1960,7 @@ function BottomNav({ styles, active, onTab }: { styles: ReturnType<typeof create
           onPress={() => onTab(key)}
         >
           <View style={[styles.navIconWrap, active === key && styles.navIconActive]}>
-            <TabGlyph styles={styles} tab={key} active={active === key} />
+            <TabGlyph palette={palette} tab={key} active={active === key} />
           </View>
           <Text style={[styles.navLabel, active === key && styles.navLabelActive]}>{label}</Text>
         </MotionPressable>
@@ -1969,55 +1969,34 @@ function BottomNav({ styles, active, onTab }: { styles: ReturnType<typeof create
   );
 }
 
-function TabGlyph({ styles, tab, active }: { styles: ReturnType<typeof createStyles>; tab: Tab; active: boolean }) {
-  const stroke = active ? styles.navStrokeActive : styles.navStroke;
-  const fill = active ? styles.navFillActive : styles.navFill;
+function TabGlyph({ palette, tab, active }: { palette: Palette; tab: Tab; active: boolean }) {
+  const color = active ? palette.primary : palette.navText;
   if (tab === 'flow') {
-    return (
-      <View style={[styles.navLedger, stroke]}>
-        <View style={[styles.navLedgerSpine, fill]} />
-        <View style={[styles.navLine, fill]} />
-        <View style={[styles.navLine, fill]} />
-        <View style={[styles.navLineShort, fill]} />
-      </View>
-    );
+    return <AppIcon name="ledger" color={color} size={24} />;
   }
-  if (tab === 'report') {
-    return (
-      <View style={[styles.navChart, stroke]}>
-        <View style={[styles.navAxis, fill]} />
-        <View style={styles.navBars}>
-          <View style={[styles.navBarOne, fill]} />
-          <View style={[styles.navBarTwo, fill]} />
-          <View style={[styles.navBarThree, fill]} />
-        </View>
-      </View>
-    );
-  }
-  if (tab === 'add') {
-    return (
-      <View style={[styles.navCoin, stroke]}>
-        <Text style={[styles.navCoinText, active && styles.navCoinTextActive]}>¥</Text>
-      </View>
-    );
-  }
-  if (tab === 'assets') {
-    return (
-      <View style={styles.navBag}>
-        <View style={[styles.navBagHandle, stroke]} />
-        <View style={[styles.navBagBody, stroke]}>
-          <Text style={[styles.navBagText, active && styles.navBagTextActive]}>¥</Text>
-        </View>
-      </View>
-    );
-  }
+  const common = { stroke: color, strokeWidth: 2.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
   return (
-    <View style={styles.navUser}>
-      <View style={[styles.navUserHead, stroke]} />
-      <View style={[styles.navUserBody, stroke]} />
-      <View style={[styles.navUserPlusH, fill]} />
-      <View style={[styles.navUserPlusV, fill]} />
-    </View>
+    <Svg width={24} height={24} viewBox="0 0 24 24">
+      {tab === 'report' ? (
+        <>
+          <Path {...common} d="M4 4.5v15h16" />
+          <Line {...common} x1={9} y1={19.5} x2={9} y2={14} />
+          <Line {...common} x1={13.5} y1={19.5} x2={13.5} y2={10} />
+          <Line {...common} x1={18} y1={19.5} x2={18} y2={6} />
+        </>
+      ) : tab === 'add' ? (
+        <>
+          <Circle {...common} cx={12} cy={12} r={8.5} />
+          <Line {...common} x1={12} y1={8} x2={12} y2={16} />
+          <Line {...common} x1={8} y1={12} x2={16} y2={12} />
+        </>
+      ) : (
+        <>
+          <Circle {...common} cx={12} cy={8} r={3.5} />
+          <Path {...common} d="M5.5 19.5c1-3.6 3.4-5.6 6.5-5.6s5.5 2 6.5 5.6" />
+        </>
+      )}
+    </Svg>
   );
 }
 
@@ -2269,7 +2248,11 @@ function PillGroup({
       {options.map(([key, label]) => (
         <MotionPressable
           key={key}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ selected: value === key }}
           onPress={() => onChange(key)}
+          hitSlop={wide ? undefined : { top: 6, bottom: 6 }}
           style={[
             styles.pill,
             wide && styles.pillWide,
@@ -2288,9 +2271,9 @@ function PillGroup({
 function MonthPills({ styles, label, onPrev, onNext, onCurrent }: { styles: ReturnType<typeof createStyles>; label: string; onPrev: () => void; onNext: () => void; onCurrent: () => void }) {
   return (
     <View style={styles.pillGroup}>
-      <MotionPressable onPress={onPrev} style={styles.pill}><Text style={styles.pillText}>上月</Text></MotionPressable>
-      <MotionPressable onPress={onCurrent} style={[styles.pill, styles.pillActive]}><Text style={styles.pillTextActive}>{label.slice(5)}</Text></MotionPressable>
-      <MotionPressable onPress={onNext} style={styles.pill}><Text style={styles.pillText}>下月</Text></MotionPressable>
+      <MotionPressable accessibilityRole="button" accessibilityLabel="切换到上个月" hitSlop={{ top: 6, bottom: 6 }} onPress={onPrev} style={styles.pill}><Text style={styles.pillText}>上月</Text></MotionPressable>
+      <MotionPressable accessibilityRole="button" accessibilityLabel="回到本月" hitSlop={{ top: 6, bottom: 6 }} onPress={onCurrent} style={[styles.pill, styles.pillActive]}><Text style={styles.pillTextActive}>{label.slice(5)}</Text></MotionPressable>
+      <MotionPressable accessibilityRole="button" accessibilityLabel="切换到下个月" hitSlop={{ top: 6, bottom: 6 }} onPress={onNext} style={styles.pill}><Text style={styles.pillText}>下月</Text></MotionPressable>
     </View>
   );
 }
@@ -2298,15 +2281,16 @@ function MonthPills({ styles, label, onPrev, onNext, onCurrent }: { styles: Retu
 function MonthSwitch({ styles, label, onPrev, onNext }: { styles: ReturnType<typeof createStyles>; label: string; onPrev: () => void; onNext: () => void }) {
   return (
     <View style={styles.monthSwitch}>
-      <MotionPressable onPress={onPrev} style={styles.monthButton}><Text style={styles.monthButtonText}>上月</Text></MotionPressable>
+      <MotionPressable accessibilityRole="button" accessibilityLabel="切换到上个月" onPress={onPrev} style={styles.monthButton}><Text style={styles.monthButtonText}>上月</Text></MotionPressable>
       <Text style={styles.monthCenter}>{label}</Text>
-      <MotionPressable onPress={onNext} style={styles.monthButton}><Text style={styles.monthButtonText}>下月</Text></MotionPressable>
+      <MotionPressable accessibilityRole="button" accessibilityLabel="切换到下个月" onPress={onNext} style={styles.monthButton}><Text style={styles.monthButtonText}>下月</Text></MotionPressable>
     </View>
   );
 }
 
 function DateControls({ styles, selectedDate, onDate }: { styles: ReturnType<typeof createStyles>; selectedDate: Date; onDate: (date: Date) => void }) {
   const [visible, setVisible] = useState(false);
+  const reducedMotion = React.useContext(MotionPreferencesContext);
   const selectDate = (date: Date) => {
     onDate(date);
     setVisible(false);
@@ -2324,31 +2308,31 @@ function DateControls({ styles, selectedDate, onDate }: { styles: ReturnType<typ
   const isToday = sameDay(selectedDate.toISOString(), new Date());
   return (
     <>
-      <MotionPressable style={styles.dateEntry} onPress={() => setVisible(true)}>
+      <MotionPressable accessibilityRole="button" accessibilityLabel="调整记账日期" style={styles.dateEntry} onPress={() => setVisible(true)}>
         <View style={styles.dateEntryMain}>
           <Text style={styles.dateEntryLabel}>日期</Text>
           <Text style={styles.dateEntryValue}>{isToday ? `今天 · ${formatDate(selectedDate)}` : formatDate(selectedDate)}</Text>
         </View>
         <Text style={styles.dateEntryAction}>调整</Text>
       </MotionPressable>
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={() => setVisible(false)}>
-        <Pressable style={styles.dateSheetBackdrop} onPress={() => setVisible(false)}>
+      <Modal visible={visible} transparent animationType={reducedMotion ? 'none' : 'slide'} onRequestClose={() => setVisible(false)}>
+        <Pressable accessibilityRole="button" accessibilityLabel="关闭日期选择" style={styles.dateSheetBackdrop} onPress={() => setVisible(false)}>
           <Pressable style={styles.dateSheet} onPress={(event) => event.stopPropagation()}>
             <View style={styles.dateSheetHeader}>
               <Text style={styles.dateSheetTitle}>选择日期</Text>
-              <MotionPressable onPress={() => setVisible(false)}><Text style={styles.dateSheetClose}>关闭</Text></MotionPressable>
+              <MotionPressable accessibilityRole="button" accessibilityLabel="关闭日期选择" hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }} onPress={() => setVisible(false)}><Text style={styles.dateSheetClose}>关闭</Text></MotionPressable>
             </View>
             <Text style={styles.dateSheetValue}>{formatDate(selectedDate)}</Text>
             <View style={styles.dateQuickGrid}>
-              <MotionPressable style={styles.dateQuickButton} onPress={() => selectDate(addDays(selectedDate, -1))}><Text style={styles.dateQuickText}>昨天</Text></MotionPressable>
-              <MotionPressable style={styles.dateQuickButton} onPress={() => selectDate(new Date())}><Text style={styles.dateQuickText}>今天</Text></MotionPressable>
-              <MotionPressable style={styles.dateQuickButton} onPress={() => selectDate(addDays(selectedDate, 1))}><Text style={styles.dateQuickText}>明天</Text></MotionPressable>
-              <MotionPressable style={styles.dateQuickButton} onPress={() => selectDate(addMonths(selectedDate, -1))}><Text style={styles.dateQuickText}>-1月</Text></MotionPressable>
-              <MotionPressable style={styles.dateQuickButton} onPress={() => selectDate(addMonths(selectedDate, 1))}><Text style={styles.dateQuickText}>+1月</Text></MotionPressable>
-              <MotionPressable style={styles.dateQuickButton} onPress={() => selectDate(addYears(selectedDate, -1))}><Text style={styles.dateQuickText}>-1年</Text></MotionPressable>
-              <MotionPressable style={styles.dateQuickButton} onPress={() => selectDate(addYears(selectedDate, 1))}><Text style={styles.dateQuickText}>+1年</Text></MotionPressable>
+              <MotionPressable style={styles.dateQuickButton} accessibilityRole="button" accessibilityLabel="日期回退一天" onPress={() => selectDate(addDays(selectedDate, -1))}><Text style={styles.dateQuickText}>昨天</Text></MotionPressable>
+              <MotionPressable style={styles.dateQuickButton} accessibilityRole="button" accessibilityLabel="回到今天" onPress={() => selectDate(new Date())}><Text style={styles.dateQuickText}>今天</Text></MotionPressable>
+              <MotionPressable style={styles.dateQuickButton} accessibilityRole="button" accessibilityLabel="日期前进一天" onPress={() => selectDate(addDays(selectedDate, 1))}><Text style={styles.dateQuickText}>明天</Text></MotionPressable>
+              <MotionPressable style={styles.dateQuickButton} accessibilityRole="button" accessibilityLabel="日期回退一个月" onPress={() => selectDate(addMonths(selectedDate, -1))}><Text style={styles.dateQuickText}>-1月</Text></MotionPressable>
+              <MotionPressable style={styles.dateQuickButton} accessibilityRole="button" accessibilityLabel="日期前进一个月" onPress={() => selectDate(addMonths(selectedDate, 1))}><Text style={styles.dateQuickText}>+1月</Text></MotionPressable>
+              <MotionPressable style={styles.dateQuickButton} accessibilityRole="button" accessibilityLabel="日期回退一年" onPress={() => selectDate(addYears(selectedDate, -1))}><Text style={styles.dateQuickText}>-1年</Text></MotionPressable>
+              <MotionPressable style={styles.dateQuickButton} accessibilityRole="button" accessibilityLabel="日期前进一年" onPress={() => selectDate(addYears(selectedDate, 1))}><Text style={styles.dateQuickText}>+1年</Text></MotionPressable>
             </View>
-            <MotionPressable style={styles.dateCalendarButton} onPress={openSystemPicker}>
+            <MotionPressable accessibilityRole="button" accessibilityLabel="打开系统日历" style={styles.dateCalendarButton} onPress={openSystemPicker}>
               <Text style={styles.dateCalendarButtonText}>打开系统日历</Text>
             </MotionPressable>
           </Pressable>
@@ -2391,6 +2375,8 @@ function Keypad({
             return (
               <MotionPressable
                 key={key}
+                accessibilityRole="button"
+                accessibilityLabel={action ? '保存' : again ? '再记一笔' : key === '⌫' ? '删除' : key === '+' ? '加号' : key === '-' ? '减号' : key === '.' ? '小数点' : `数字 ${key}`}
                 disabled={(action || again) && (!canSave || saving)}
                 style={[styles.keyButton, action && (type === 'income' ? styles.keyPrimaryIncome : styles.keyPrimary), (action || again) && (!canSave || saving) && styles.keyDisabled]}
                 onPress={action ? onSave : again ? onAgain : () => onKey(key)}
@@ -2439,7 +2425,7 @@ function PeriodRow({ styles, title, records }: { styles: ReturnType<typeof creat
 
 function RecordRow({ styles, record, onPress }: { styles: ReturnType<typeof createStyles>; record: LedgerRecord; onPress?: () => void }) {
   return (
-    <MotionPressable style={({ pressed }) => [styles.recordRow, onPress && pressed && styles.navItemPressed]} onPress={onPress}>
+    <MotionPressable accessibilityRole={onPress ? "button" : undefined} accessibilityLabel={onPress ? `编辑${record.secondary || record.primary}流水` : undefined} style={({ pressed }) => [styles.recordRow, onPress && pressed && styles.navItemPressed]} onPress={onPress}>
       <View style={styles.recordIcon}><AppIcon name={categoryIcon(record.primary, record.type)} color={record.type === 'income' ? styles.incomeText.color : styles.expenseText.color} size={22} /></View>
       <View style={styles.recordMain}>
         <Text style={styles.recordTitle}>{record.secondary || record.primary}</Text>
@@ -2478,6 +2464,7 @@ function BarChart({
               accessibilityRole={onPress ? "button" : undefined}
               accessibilityLabel={onPress ? `查看${item.label}流水` : undefined}
               onPress={() => onPress?.(item)}
+              hitSlop={onPress ? { top: 10, bottom: 10, left: 9, right: 9 } : undefined}
               style={({ pressed }) => [styles.barCol, onPress && styles.barColPressable, pressed && onPress && styles.barColPressed]}
             >
               {item.amount > 0 ? <Text numberOfLines={1} style={styles.barValue}>{shortMoney(item.amount)}</Text> : null}
@@ -2647,7 +2634,7 @@ function SettingsRow({ styles, icon, title, body, action, onPress }: { styles: R
         <Text style={styles.settingsTitle}>{title}</Text>
         <Text style={styles.bodyText}>{body}</Text>
       </View>
-      <MotionPressable style={styles.smallButton} onPress={onPress}><Text style={styles.smallButtonText}>{action}</Text></MotionPressable>
+      <MotionPressable accessibilityRole="button" accessibilityLabel={`${action}${title}`} style={styles.smallButton} onPress={onPress}><Text style={styles.smallButtonText}>{action}</Text></MotionPressable>
     </View>
   );
 }
@@ -3396,279 +3383,279 @@ function csvEscape(value: string | number) {
 const expenseChartColors = ['#6B8A6F', '#87A68A', '#476C5B', '#BDCEC0', '#998B6F', '#7A715F', '#5A656F', '#A9BBAE'];
 const incomeChartColors = ['#CD6F47', '#D98A62', '#C2744E', '#E0A37E', '#A65C3E', '#C39C86', '#D7B092', '#8A5F43'];
 
+// 设计 token：集中管理 createStyles 可安全收敛的样式常量（仅做差 ≤2 的取值归一，几何约束值保留字面量）。
+const RADIUS = {
+  sm: 8, // 小控件圆角：按钮、输入框、胶囊组
+  md: 10, // 中圆角：筛选条、图标底、次级按钮
+  lg: 12, // 卡片圆角
+  xl: 20, // 大圆角：弹层与大面积容器
+} as const;
+
+const FONT = {
+  xs: 12, // 辅助说明与徽标文字
+  sm: 14, // 次要正文与标签
+  md: 16, // 正文
+  lg: 20, // 区块标题
+  xl: 22, // 弹层与页面大标题
+  xxl: 32, // 特大标题数字
+} as const;
+
+const SPACE = {
+  xxs: 4, // 微间距：图标与文字间隙、紧凑内距
+  xs: 8, // 控件内间距
+  sm: 12, // 卡片内边距与相邻组件间距
+  md: 16, // 页面级水平边距
+  lg: 20, // 弹层内边距
+  xl: 24, // 页面上下留白
+  xxl: 28, // 大区块间距与留白
+} as const;
+
 function createStyles(p: Palette) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: p.background },
     appShell: { flex: 1, backgroundColor: p.background },
     content: { flex: 1 },
-    loadingScreen: { flex: 1, justifyContent: 'center', padding: 24, gap: 10 },
+    loadingScreen: { flex: 1, justifyContent: 'center', padding: SPACE.xl, gap: SPACE.sm },
     page: { flex: 1 },
-    pageBody: { paddingHorizontal: 16, paddingTop: 36, paddingBottom: 24, gap: 16 },
+    pageBody: { paddingHorizontal: SPACE.md, paddingTop: 36, paddingBottom: SPACE.xl, gap: SPACE.md },
     addScreen: { flex: 1, backgroundColor: p.background },
-    addPageBody: { paddingTop: 24, paddingBottom: 16, gap: 8 },
-    ledgerHeader: { paddingHorizontal: 16, paddingTop: 36, paddingBottom: 12, gap: 12 },
-    ledgerFilterRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: p.softCard, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
-    ledgerFilterText: { flex: 1, color: p.text, fontSize: 15, fontWeight: '600' },
-    ledgerFilterClear: { color: p.primary, fontSize: 15, fontWeight: '700' },
-    ledgerSearch: { height: 46, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, borderRadius: 10, paddingHorizontal: 12, color: p.text, fontSize: 16 },
-    ledgerList: { paddingHorizontal: 16, paddingBottom: 28 },
+    addPageBody: { paddingTop: SPACE.xl, paddingBottom: SPACE.md, gap: SPACE.xs },
+    ledgerHeader: { paddingHorizontal: SPACE.md, paddingTop: 36, paddingBottom: SPACE.sm, gap: SPACE.sm },
+    ledgerFilterRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, backgroundColor: p.softCard, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.sm },
+    ledgerFilterText: { flex: 1, color: p.text, fontSize: FONT.sm, fontWeight: '600' },
+    ledgerFilterClear: { color: p.primary, fontSize: FONT.sm, fontWeight: '700' },
+    ledgerSearch: { height: 46, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, color: p.text, fontSize: FONT.md },
+    ledgerList: { paddingHorizontal: SPACE.md, paddingBottom: SPACE.xxl },
     ledgerSeparator: { height: 10 },
-    heroHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-    heroTitle: { color: p.text, fontSize: 32, fontWeight: '700', letterSpacing: -0.5 },
+    heroHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm },
+    heroTitle: { color: p.text, fontSize: FONT.xxl, fontWeight: '700', letterSpacing: -0.5 },
     addHeroTitle: { fontSize: 29 },
-    subtitle: { color: p.muted, fontSize: 16, marginTop: 4 },
-    card: { backgroundColor: p.card, borderRadius: 12, padding: 16, gap: 12, borderWidth: 1, borderColor: p.border },
-    sectionTitle: { color: p.text, fontSize: 20, fontWeight: '700', letterSpacing: -0.2 },
-    bodyText: { color: p.text, fontSize: 15, lineHeight: 23 },
+    subtitle: { color: p.muted, fontSize: FONT.md, marginTop: SPACE.xxs },
+    card: { backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.md, gap: SPACE.sm, borderWidth: 1, borderColor: p.border },
+    sectionTitle: { color: p.text, fontSize: FONT.lg, fontWeight: '700', letterSpacing: -0.2 },
+    bodyText: { color: p.text, fontSize: FONT.sm, lineHeight: 23 },
     placeholderColor: { color: p.muted },
-    summaryBlock: { gap: 14 },
-    quickEntryRow: { flexDirection: 'row', gap: 10 },
-    quickEntryButton: { flex: 1, minHeight: 76, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1 },
+    summaryBlock: { gap: SPACE.md },
+    quickEntryRow: { flexDirection: 'row', gap: SPACE.sm },
+    quickEntryButton: { flex: 1, minHeight: 76, borderRadius: RADIUS.lg, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.sm, flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, borderWidth: 1 },
     quickEntryExpense: { backgroundColor: p.card, borderColor: p.primary },
     quickEntryIncome: { backgroundColor: p.card, borderColor: p.secondary },
-    quickEntryMark: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    quickEntryMark: { width: 34, height: 34, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
     quickEntryExpenseMark: { backgroundColor: `${p.primary}1A` },
     quickEntryIncomeMark: { backgroundColor: `${p.secondary}1A` },
-    quickEntryMarkText: { fontSize: 25, lineHeight: 28, fontWeight: '500' },
+    quickEntryMarkText: { fontSize: FONT.xl, lineHeight: 28, fontWeight: '500' },
     quickEntryExpenseText: { color: p.primary },
     quickEntryIncomeText: { color: p.secondary },
-    quickEntryCopy: { flex: 1, gap: 3 },
-    quickEntryTitle: { fontSize: 16, fontWeight: '700' },
-    quickEntryHint: { color: p.muted, fontSize: 11 },
-    quickEntryArrow: { fontSize: 24, fontWeight: '500' },
+    quickEntryCopy: { flex: 1, gap: SPACE.xxs },
+    quickEntryTitle: { fontSize: FONT.md, fontWeight: '700' },
+    quickEntryHint: { color: p.muted, fontSize: FONT.xs },
+    quickEntryArrow: { fontSize: FONT.xl, fontWeight: '500' },
     summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-    summaryLabel: { color: p.muted, fontSize: 16, fontWeight: '600' },
-    summaryAmount: { fontSize: 42, fontWeight: '700', marginTop: 8, letterSpacing: -0.8 },
+    summaryLabel: { color: p.muted, fontSize: FONT.md, fontWeight: '600' },
+    summaryAmount: { fontSize: 42, fontWeight: '700', marginTop: SPACE.xs, letterSpacing: -0.8 },
     summaryAmountExpense: { color: p.primary },
     summaryAmountIncome: { color: p.secondary },
     summaryCount: { alignItems: 'flex-end' },
     summaryCountLabel: { color: p.muted, fontWeight: '700' },
-    summaryCountValue: { color: p.text, fontSize: 20, fontWeight: '700', marginTop: 4 },
-    splitTrack: { height: 8, borderRadius: 8, overflow: 'hidden', flexDirection: 'row', backgroundColor: p.softCard, gap: 3 },
-    splitIncome: { borderRadius: 8 },
-    splitExpense: { borderRadius: 8 },
-    metricRow: { flexDirection: 'row', gap: 8 },
-    miniMetric: { flex: 1, backgroundColor: p.card, borderRadius: 8, padding: 12, gap: 5, borderWidth: 1, borderColor: p.border },
-    metricLabel: { color: p.muted, fontSize: 14, fontWeight: '600' },
-    incomeText: { color: p.secondary, fontSize: 16, fontWeight: '600' },
-    expenseText: { color: p.primary, fontSize: 16, fontWeight: '600' },
-    pillGroup: { flexDirection: 'row', backgroundColor: p.card, borderRadius: 12, padding: 3, gap: 2, borderWidth: 1, borderColor: p.border },
+    summaryCountValue: { color: p.text, fontSize: FONT.lg, fontWeight: '700', marginTop: SPACE.xxs },
+    splitTrack: { height: 8, borderRadius: RADIUS.sm, overflow: 'hidden', flexDirection: 'row', backgroundColor: p.softCard, gap: SPACE.xxs },
+    splitIncome: { borderRadius: RADIUS.sm },
+    splitExpense: { borderRadius: RADIUS.sm },
+    metricRow: { flexDirection: 'row', gap: SPACE.xs },
+    miniMetric: { flex: 1, backgroundColor: p.card, borderRadius: RADIUS.sm, padding: SPACE.sm, gap: SPACE.xxs, borderWidth: 1, borderColor: p.border },
+    metricLabel: { color: p.muted, fontSize: FONT.sm, fontWeight: '600' },
+    incomeText: { color: p.secondary, fontSize: FONT.md, fontWeight: '600' },
+    expenseText: { color: p.primary, fontSize: FONT.md, fontWeight: '600' },
+    pillGroup: { flexDirection: 'row', backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.xxs, gap: SPACE.xxs, borderWidth: 1, borderColor: p.border },
     pillGroupWide: { width: '100%' },
-    pill: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8 },
-    pillWide: { flex: 1, alignItems: 'center', paddingVertical: 13 },
+    pill: { paddingVertical: SPACE.xs, paddingHorizontal: SPACE.md, borderRadius: RADIUS.sm },
+    pillWide: { flex: 1, alignItems: 'center', paddingVertical: SPACE.sm },
     pillActive: { backgroundColor: p.background },
     pillActiveExpense: { backgroundColor: p.primary },
     pillActiveIncome: { backgroundColor: p.secondary },
-    pillText: { color: p.muted, fontSize: 16, fontWeight: '500' },
-    pillTextActive: { color: p.text, fontSize: 16, fontWeight: '700' },
+    pillText: { color: p.muted, fontSize: FONT.md, fontWeight: '500' },
+    pillTextActive: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
     pillTextToneActive: { color: '#FFFFFF' },
-    periodRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 8 },
-    periodTitle: { flex: 1, color: p.text, fontSize: 20, fontWeight: '700' },
-    periodValues: { width: '50%', gap: 4 },
-    periodAmountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    periodRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.xs },
+    periodTitle: { flex: 1, color: p.text, fontSize: FONT.lg, fontWeight: '700' },
+    periodValues: { width: '50%', gap: SPACE.xxs },
+    periodAmountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.xs },
     periodAmountValue: { flex: 1, textAlign: 'right' },
-    chartHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-    chartTotal: { color: p.text, fontSize: 15, fontWeight: '700' },
+    chartHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.sm },
+    chartTotal: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
     barViewport: { marginHorizontal: -4 },
-    barArea: { height: 172, flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 24, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: p.border },
-    barCol: { flex: 1, minWidth: 26, alignItems: 'center', gap: 5 },
-    barColPressable: { borderRadius: 8 },
+    barArea: { height: 172, flexDirection: 'row', alignItems: 'flex-end', gap: SPACE.xs, paddingTop: SPACE.xl, paddingHorizontal: SPACE.xxs, borderBottomWidth: 1, borderBottomColor: p.border },
+    barCol: { flex: 1, minWidth: 26, alignItems: 'center', gap: SPACE.xxs },
+    barColPressable: { borderRadius: RADIUS.sm },
     barColPressed: { opacity: 0.62 },
-    bar: { width: 16, borderRadius: 8, backgroundColor: p.primary },
-    barValue: { color: p.text, fontSize: 10, fontWeight: '700' },
-    barLabel: { color: p.muted, fontSize: 10 },
-    categoryStatRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
-    categoryStatRowPressable: { borderRadius: 8 },
+    bar: { width: 16, borderRadius: RADIUS.sm, backgroundColor: p.primary },
+    barValue: { color: p.text, fontSize: FONT.xs, fontWeight: '700' },
+    barLabel: { color: p.muted, fontSize: FONT.xs },
+    categoryStatRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.xs },
+    categoryStatRowPressable: { borderRadius: RADIUS.sm },
     categoryStatRowPressed: { opacity: 0.62 },
-    dot: { width: 9, height: 9, borderRadius: 9 },
-    categoryStatMain: { flex: 1, gap: 4 },
-    categoryStatName: { color: p.text, fontSize: 16, fontWeight: '700' },
-    categoryStatSub: { color: p.muted, fontSize: 13 },
-    categoryAmount: { color: p.text, fontSize: 15, fontWeight: '700' },
+    dot: { width: 9, height: 9, borderRadius: RADIUS.md },
+    categoryStatMain: { flex: 1, gap: SPACE.xxs },
+    categoryStatName: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
+    categoryStatSub: { color: p.muted, fontSize: FONT.sm },
+    categoryAmount: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
     progressTrack: { height: 5, borderRadius: 5, backgroundColor: p.border, overflow: 'hidden' },
     progressFill: { height: 5, borderRadius: 5 },
     listTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    linkText: { color: p.primary, fontSize: 16, fontWeight: '700' },
-    recordRow: { backgroundColor: p.card, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: p.border },
+    linkText: { color: p.primary, fontSize: FONT.md, fontWeight: '700' },
+    recordRow: { backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.sm, flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderWidth: 1, borderColor: p.border },
     recordIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: p.background, alignItems: 'center', justifyContent: 'center' },
-    recordMain: { flex: 1, gap: 3 },
-    recordTitle: { color: p.text, fontSize: 17, fontWeight: '700' },
-    recordSub: { color: p.muted, fontSize: 13 },
-    recordIncome: { color: p.secondary, fontWeight: '700', fontSize: 16 },
-    recordExpense: { color: p.primary, fontWeight: '700', fontSize: 16 },
-    monthSwitch: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-    monthButton: { flex: 1, height: 44, borderRadius: 8, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
-    monthButtonText: { color: p.text, fontWeight: '600', fontSize: 16 },
-    monthCenter: { flex: 1.2, color: p.text, fontWeight: '700', fontSize: 18, textAlign: 'center' },
-    analysisWrap: { gap: 16 },
+    recordMain: { flex: 1, gap: SPACE.xxs },
+    recordTitle: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
+    recordSub: { color: p.muted, fontSize: FONT.sm },
+    recordIncome: { color: p.secondary, fontWeight: '700', fontSize: FONT.md },
+    recordExpense: { color: p.primary, fontWeight: '700', fontSize: FONT.md },
+    monthSwitch: { flexDirection: 'row', gap: SPACE.xs, alignItems: 'center' },
+    monthButton: { flex: 1, height: 44, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
+    monthButtonText: { color: p.text, fontWeight: '600', fontSize: FONT.md },
+    monthCenter: { flex: 1.2, color: p.text, fontWeight: '700', fontSize: FONT.md, textAlign: 'center' },
+    analysisWrap: { gap: SPACE.md },
     donutWrap: { alignSelf: 'center', width: 168, height: 168, alignItems: 'center', justifyContent: 'center' },
     donutTrack: { color: p.border },
     donutCenter: { position: 'absolute', width: 104, height: 104, borderRadius: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
     donutLike: { alignSelf: 'center', width: 142, height: 142, borderRadius: 71, borderWidth: 24, borderColor: p.primary, alignItems: 'center', justifyContent: 'center' },
-    donutLabel: { color: p.muted, fontSize: 13 },
-    donutAmount: { color: p.text, fontWeight: '700', fontSize: 16 },
-    analysisList: { gap: 4 },
-    categorySectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 },
-    categorySectionHeading: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-    selectedCategorySummary: { flexShrink: 1, color: p.text, fontSize: 12, fontWeight: '600' },
-    recentCategorySection: { gap: 7, paddingTop: 2 },
-    recentCategoryRail: { gap: 8, paddingRight: 16 },
-    recentCategoryChip: { minWidth: 88, maxWidth: 142, borderRadius: 9, paddingHorizontal: 11, paddingVertical: 8, gap: 2, backgroundColor: p.card, borderWidth: 1, borderColor: p.border },
+    donutLabel: { color: p.muted, fontSize: FONT.sm },
+    donutAmount: { color: p.text, fontWeight: '700', fontSize: FONT.md },
+    analysisList: { gap: SPACE.xxs },
+    categorySectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: SPACE.xxs },
+    categorySectionHeading: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
+    selectedCategorySummary: { flexShrink: 1, color: p.text, fontSize: FONT.xs, fontWeight: '600' },
+    recentCategorySection: { gap: SPACE.xs, paddingTop: SPACE.xxs },
+    recentCategoryRail: { gap: SPACE.xs, paddingRight: SPACE.md },
+    recentCategoryChip: { minWidth: 88, maxWidth: 142, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs, gap: SPACE.xxs, backgroundColor: p.card, borderWidth: 1, borderColor: p.border },
     recentCategoryChipExpenseActive: { backgroundColor: p.primary, borderColor: p.primary },
     recentCategoryChipIncomeActive: { backgroundColor: p.secondary, borderColor: p.secondary },
-    recentCategoryPrimary: { color: p.text, fontSize: 11, fontWeight: '600' },
-    recentCategorySecondary: { color: p.muted, fontSize: 13, fontWeight: '700' },
+    recentCategoryPrimary: { color: p.text, fontSize: FONT.xs, fontWeight: '600' },
+    recentCategorySecondary: { color: p.muted, fontSize: FONT.sm, fontWeight: '700' },
     recentCategoryTextActive: { color: '#FFFFFF' },
-    sectionCaption: { color: p.muted, fontSize: 14, fontWeight: '700' },
-    categoryRail: { flexDirection: 'row', gap: 14, paddingVertical: 1 },
-    categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 10, paddingVertical: 1 },
-    categoryItem: { width: 66, alignItems: 'center', gap: 5 },
-    categoryGridItem: { width: '25%', alignItems: 'center', gap: 5 },
-    categoryCircle: { width: 48, height: 48, borderRadius: 14, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center' },
+    sectionCaption: { color: p.muted, fontSize: FONT.sm, fontWeight: '700' },
+    categoryRail: { flexDirection: 'row', gap: SPACE.md, paddingVertical: 1 },
+    categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: SPACE.sm, paddingVertical: 1 },
+    categoryItem: { width: 66, alignItems: 'center', gap: SPACE.xxs },
+    categoryGridItem: { width: '25%', alignItems: 'center', gap: SPACE.xxs },
+    categoryCircle: { width: 48, height: 48, borderRadius: RADIUS.lg, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center' },
     categoryCircleActiveExpense: { borderWidth: 2, borderColor: p.primary, backgroundColor: p.card },
     categoryCircleActiveIncome: { borderWidth: 2, borderColor: p.secondary, backgroundColor: p.card },
-    categoryLabel: { color: p.text, fontWeight: '600', fontSize: 13, textAlign: 'center' },
+    categoryLabel: { color: p.text, fontWeight: '600', fontSize: FONT.sm, textAlign: 'center' },
     categoryLabelActive: { fontWeight: '700' },
-    secondaryBox: { flexDirection: 'row', gap: 7, backgroundColor: p.card, borderRadius: 12, padding: 7, borderWidth: 1, borderColor: p.border },
-    secondaryChip: { borderWidth: 1, borderColor: p.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+    secondaryBox: { flexDirection: 'row', gap: SPACE.xs, backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.xs, borderWidth: 1, borderColor: p.border },
+    secondaryChip: { borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
     secondaryChipActive: { backgroundColor: p.primary, borderColor: p.primary },
     secondaryChipActiveIncome: { backgroundColor: p.secondary, borderColor: p.secondary },
     secondaryText: { color: p.text, fontWeight: '700' },
     secondaryTextActive: { color: '#FFFFFF' },
-    dateEntry: { minHeight: 42, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: p.border, backgroundColor: p.background, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    dateEntryMain: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-    dateEntryLabel: { color: p.muted, fontSize: 14, fontWeight: '700' },
-    dateEntryValue: { color: p.text, fontSize: 15, fontWeight: '700' },
-    dateEntryAction: { color: p.primary, fontSize: 14, fontWeight: '700' },
+    dateEntry: { minHeight: 42, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: p.border, backgroundColor: p.background, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    dateEntryMain: { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
+    dateEntryLabel: { color: p.muted, fontSize: FONT.sm, fontWeight: '700' },
+    dateEntryValue: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
+    dateEntryAction: { color: p.primary, fontSize: FONT.sm, fontWeight: '700' },
     dateSheetBackdrop: { flex: 1, backgroundColor: 'rgba(20,20,20,0.34)', justifyContent: 'flex-end' },
-    dateSheet: { backgroundColor: p.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 30, gap: 16 },
+    dateSheet: { backgroundColor: p.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 20, paddingBottom: SPACE.xxl, gap: SPACE.md },
     dateSheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    dateSheetTitle: { color: p.text, fontSize: 22, fontWeight: '700' },
-    dateSheetClose: { color: p.primary, fontSize: 16, fontWeight: '700' },
-    dateSheetValue: { color: p.text, fontSize: 18, fontWeight: '700' },
-    dateQuickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    dateQuickButton: { width: '30%', height: 44, borderRadius: 9, borderWidth: 1, borderColor: p.border, backgroundColor: p.background, alignItems: 'center', justifyContent: 'center' },
-    dateQuickText: { color: p.text, fontSize: 15, fontWeight: '700' },
-    dateCalendarButton: { height: 48, borderRadius: 10, backgroundColor: p.primary, alignItems: 'center', justifyContent: 'center' },
-    dateCalendarButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-    addAmountCard: { backgroundColor: p.card, borderRadius: 12, padding: 12, gap: 9, borderWidth: 1, borderColor: p.border },
-    addDetailsCard: { backgroundColor: p.card, borderRadius: 12, padding: 10, gap: 8, borderWidth: 1, borderColor: p.border },
-    addMoreToggle: { minHeight: 46, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    addMoreCopy: { gap: 2 },
-    addMoreTitle: { color: p.text, fontSize: 14, fontWeight: '700' },
-    addMoreHint: { color: p.muted, fontSize: 11 },
-    addMoreAction: { color: p.primary, fontSize: 13, fontWeight: '700' },
-    addKeypadDock: { backgroundColor: p.background, borderTopWidth: 1, borderTopColor: p.border, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 6 },
+    dateSheetTitle: { color: p.text, fontSize: FONT.xl, fontWeight: '700' },
+    dateSheetClose: { color: p.primary, fontSize: FONT.md, fontWeight: '700' },
+    dateSheetValue: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
+    dateQuickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.xs },
+    dateQuickButton: { width: '30%', height: 44, borderRadius: RADIUS.md, borderWidth: 1, borderColor: p.border, backgroundColor: p.background, alignItems: 'center', justifyContent: 'center' },
+    dateQuickText: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
+    dateCalendarButton: { height: 48, borderRadius: RADIUS.md, backgroundColor: p.primary, alignItems: 'center', justifyContent: 'center' },
+    dateCalendarButtonText: { color: '#FFFFFF', fontSize: FONT.md, fontWeight: '700' },
+    addAmountCard: { backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.sm, gap: SPACE.xs, borderWidth: 1, borderColor: p.border },
+    addDetailsCard: { backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.sm, gap: SPACE.xs, borderWidth: 1, borderColor: p.border },
+    addMoreToggle: { minHeight: 46, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs, borderRadius: RADIUS.md, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    addMoreCopy: { gap: SPACE.xxs },
+    addMoreTitle: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
+    addMoreHint: { color: p.muted, fontSize: FONT.xs },
+    addMoreAction: { color: p.primary, fontSize: FONT.sm, fontWeight: '700' },
+    addKeypadDock: { backgroundColor: p.background, borderTopWidth: 1, borderTopColor: p.border, paddingHorizontal: SPACE.md, paddingTop: SPACE.xs, paddingBottom: SPACE.xs, gap: SPACE.xs },
     amountLarge: { color: p.primary, fontSize: 34, fontWeight: '700', letterSpacing: -0.4 },
     amountIncome: { color: p.secondary },
-    noteInput: { backgroundColor: p.input, borderWidth: 1, borderColor: p.border, borderRadius: 8, minHeight: 42, paddingHorizontal: 12, color: p.text, fontSize: 16 },
-    keypad: { gap: 6 },
-    keyRow: { flexDirection: 'row', gap: 6 },
-    keyButton: { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
+    noteInput: { backgroundColor: p.input, borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.sm, minHeight: 42, paddingHorizontal: SPACE.sm, color: p.text, fontSize: FONT.md },
+    keypad: { gap: SPACE.xs },
+    keyRow: { flexDirection: 'row', gap: SPACE.xs },
+    keyButton: { flex: 1, height: 44, borderRadius: RADIUS.md, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
     keyPrimary: { backgroundColor: p.primary, borderColor: p.primary },
     keyPrimaryIncome: { backgroundColor: p.secondary, borderColor: p.secondary },
     keyDisabled: { backgroundColor: p.border, opacity: 0.45 },
-    keyText: { color: p.text, fontWeight: '700', fontSize: 23 },
+    keyText: { color: p.text, fontWeight: '700', fontSize: FONT.xl },
     keyPrimaryText: { color: '#FFFFFF' },
     keyDisabledText: { color: p.muted },
-    assetCard: { backgroundColor: p.primary, borderRadius: 12, padding: 18, gap: 14 },
-    assetTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' },
-    assetSub: { color: '#FFFFFF', opacity: 0.85, fontSize: 16 },
-    assetBalance: { color: '#FFFFFF', fontSize: 36, fontWeight: '700', marginVertical: 8 },
-    assetGrid: { backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 12, padding: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-    assetMetric: { width: '47%', gap: 4 },
+    assetCard: { backgroundColor: p.primary, borderRadius: RADIUS.lg, padding: SPACE.md, gap: SPACE.md },
+    assetTitle: { color: '#FFFFFF', fontSize: FONT.xl, fontWeight: '700' },
+    assetSub: { color: '#FFFFFF', opacity: 0.85, fontSize: FONT.md },
+    assetBalance: { color: '#FFFFFF', fontSize: 36, fontWeight: '700', marginVertical: SPACE.xs },
+    assetGrid: { backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: RADIUS.lg, padding: SPACE.md, flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },
+    assetMetric: { width: '47%', gap: SPACE.xxs },
     assetMetricFull: { width: '100%' },
-    assetMetricLabel: { color: '#FFFFFF', opacity: 0.72, fontSize: 14 },
-    assetMetricValue: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-    actionButton: { backgroundColor: p.primary, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
-    actionButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
-    settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-    settingsIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center' },
-    settingsMain: { flex: 1, gap: 3 },
-    settingsTitle: { color: p.text, fontSize: 18, fontWeight: '700' },
-    securityHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    securityStatusGrid: { flexDirection: 'row', gap: 8 },
-    securityStatusCard: { flex: 1, borderWidth: 1, borderColor: p.border, borderRadius: 10, backgroundColor: p.input, padding: 10, gap: 5 },
-    securityStatusLabel: { color: p.muted, fontSize: 12, fontWeight: '700' },
-    securityStatusValue: { color: p.text, fontSize: 14, fontWeight: '800' },
+    assetMetricLabel: { color: '#FFFFFF', opacity: 0.72, fontSize: FONT.sm },
+    assetMetricValue: { color: '#FFFFFF', fontSize: FONT.md, fontWeight: '700' },
+    actionButton: { backgroundColor: p.primary, borderRadius: RADIUS.lg, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
+    actionButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: FONT.sm },
+    settingsRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.sm },
+    settingsIcon: { width: 42, height: 42, borderRadius: RADIUS.lg, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center' },
+    settingsMain: { flex: 1, gap: SPACE.xxs },
+    settingsTitle: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
+    securityHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+    securityStatusGrid: { flexDirection: 'row', gap: SPACE.xs },
+    securityStatusCard: { flex: 1, borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.md, backgroundColor: p.input, padding: SPACE.sm, gap: SPACE.xxs },
+    securityStatusLabel: { color: p.muted, fontSize: FONT.xs, fontWeight: '700' },
+    securityStatusValue: { color: p.text, fontSize: FONT.sm, fontWeight: '800' },
     securityStatusActive: { color: p.primary },
-    securityPasscodeRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-    securityInput: { flex: 1, height: 48, backgroundColor: p.input, borderWidth: 1, borderColor: p.border, borderRadius: 10, paddingHorizontal: 12, color: p.text, fontSize: 16 },
-    securityPrimaryButton: { width: 78, height: 48, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: p.primary },
-    securityPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
-    securityModeGroup: { flexDirection: 'row', borderWidth: 1, borderColor: p.border, borderRadius: 12, overflow: 'hidden', backgroundColor: p.card },
+    securityPasscodeRow: { flexDirection: 'row', gap: SPACE.xs, alignItems: 'center' },
+    securityInput: { flex: 1, height: 48, backgroundColor: p.input, borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, color: p.text, fontSize: FONT.md },
+    securityPrimaryButton: { width: 78, height: 48, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: p.primary },
+    securityPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: FONT.sm },
+    securityModeGroup: { flexDirection: 'row', borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.lg, overflow: 'hidden', backgroundColor: p.card },
     securityModeButton: { flex: 1, height: 46, alignItems: 'center', justifyContent: 'center' },
     securityModeActive: { backgroundColor: p.navActive },
-    securityModeText: { color: p.muted, fontSize: 15, fontWeight: '800' },
+    securityModeText: { color: p.muted, fontSize: FONT.sm, fontWeight: '800' },
     securityModeTextActive: { color: p.text },
-    securityActions: { flexDirection: 'row', gap: 8 },
-    securityActionButton: { flex: 1, height: 46, borderRadius: 10, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
-    securityActionText: { color: p.text, fontWeight: '800', fontSize: 15 },
-    smallButton: { borderRadius: 12, borderWidth: 1, borderColor: p.border, paddingHorizontal: 16, height: 40, justifyContent: 'center' },
+    securityActions: { flexDirection: 'row', gap: SPACE.xs },
+    securityActionButton: { flex: 1, height: 46, borderRadius: RADIUS.md, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
+    securityActionText: { color: p.text, fontWeight: '800', fontSize: FONT.sm },
+    smallButton: { borderRadius: RADIUS.lg, borderWidth: 1, borderColor: p.border, paddingHorizontal: SPACE.md, height: 40, justifyContent: 'center' },
     smallButtonText: { color: p.text, fontWeight: '700' },
-    fullButton: { backgroundColor: p.primary, borderRadius: 12, height: 50, alignItems: 'center', justifyContent: 'center' },
-    fullButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
-    outlineFullButton: { borderWidth: 1, borderColor: p.border, borderRadius: 12, height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
-    outlineFullButtonText: { color: p.text, fontWeight: '700', fontSize: 16 },
-    dangerFullButton: { height: 48, borderRadius: 12, borderWidth: 1, borderColor: p.danger, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
-    dangerFullButtonText: { color: p.danger, fontWeight: '700', fontSize: 16 },
-    manageCard: { backgroundColor: p.card, borderRadius: 12, borderWidth: 1, borderColor: p.border, padding: 14, gap: 12 },
+    fullButton: { backgroundColor: p.primary, borderRadius: RADIUS.lg, height: 50, alignItems: 'center', justifyContent: 'center' },
+    fullButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: FONT.md },
+    outlineFullButton: { borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.lg, height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
+    outlineFullButtonText: { color: p.text, fontWeight: '700', fontSize: FONT.md },
+    dangerFullButton: { height: 48, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: p.danger, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
+    dangerFullButtonText: { color: p.danger, fontWeight: '700', fontSize: FONT.md },
+    manageCard: { backgroundColor: p.card, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: p.border, padding: SPACE.md, gap: SPACE.sm },
     manageCardActive: { borderColor: p.primary },
-    manageHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    manageBody: { gap: 10 },
-    manageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    manageAction: { borderWidth: 1, borderColor: p.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+    manageHead: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+    manageBody: { gap: SPACE.sm },
+    manageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.xs },
+    manageAction: { borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
     manageActionText: { color: p.primary, fontWeight: '700' },
     dangerText: { color: p.danger },
-    secondaryRow: { backgroundColor: p.background, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-    secondaryRowTitle: { flex: 1, color: p.text, fontWeight: '700', fontSize: 16 },
-    secondaryRowAction: { color: p.primary, fontWeight: '700', fontSize: 16 },
-    secondaryInput: { flex: 1, color: p.text, fontSize: 16, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: p.border },
-    inlineForm: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-    inlineInput: { flex: 1, minHeight: 46, backgroundColor: p.card, borderColor: p.border, borderWidth: 1, borderRadius: 8, color: p.text, paddingHorizontal: 12, fontSize: 16 },
-    inlineButton: { height: 46, paddingHorizontal: 16, backgroundColor: p.primary, borderRadius: 8, justifyContent: 'center' },
+    secondaryRow: { backgroundColor: p.background, borderRadius: RADIUS.md, padding: SPACE.sm, flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+    secondaryRowTitle: { flex: 1, color: p.text, fontWeight: '700', fontSize: FONT.md },
+    secondaryRowAction: { color: p.primary, fontWeight: '700', fontSize: FONT.md },
+    secondaryInput: { flex: 1, color: p.text, fontSize: FONT.md, fontWeight: '700', borderBottomWidth: 1, borderBottomColor: p.border },
+    inlineForm: { flexDirection: 'row', gap: SPACE.xs, alignItems: 'center' },
+    inlineInput: { flex: 1, minHeight: 46, backgroundColor: p.card, borderColor: p.border, borderWidth: 1, borderRadius: RADIUS.sm, color: p.text, paddingHorizontal: SPACE.sm, fontSize: FONT.md },
+    inlineButton: { height: 46, paddingHorizontal: SPACE.md, backgroundColor: p.primary, borderRadius: RADIUS.sm, justifyContent: 'center' },
     inlineButtonText: { color: '#FFFFFF', fontWeight: '700' },
-    logRow: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: p.border, gap: 4 },
-    lockScreen: { flex: 1, padding: 28, justifyContent: 'center', gap: 28 },
-    passDots: { flexDirection: 'row', justifyContent: 'center', gap: 16 },
+    logRow: { paddingVertical: SPACE.xs, borderBottomWidth: 1, borderBottomColor: p.border, gap: SPACE.xxs },
+    lockScreen: { flex: 1, padding: SPACE.xxl, justifyContent: 'center', gap: SPACE.xxl },
+    passDots: { flexDirection: 'row', justifyContent: 'center', gap: SPACE.md },
     passDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: p.border },
     passDotFilled: { backgroundColor: p.primary, borderColor: p.primary },
-    lockKeypad: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-    lockKey: { width: '30.5%', height: 62, borderRadius: 12, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
-    navBar: { height: 96, flexDirection: 'row', backgroundColor: p.nav, borderTopWidth: 1, borderTopColor: p.border, paddingTop: 8, paddingBottom: 10, paddingHorizontal: 8 },
-    navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
+    lockKeypad: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },
+    lockKey: { width: '30.5%', height: 62, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
+    navBar: { height: 96, flexDirection: 'row', backgroundColor: p.nav, borderTopWidth: 1, borderTopColor: p.border, paddingTop: SPACE.xs, paddingBottom: SPACE.sm, paddingHorizontal: SPACE.xs },
+    navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACE.xs },
     navItemPressed: { opacity: 0.72 },
-    navIconWrap: { width: 56, height: 42, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+    navIconWrap: { width: 56, height: 42, borderRadius: RADIUS.xl, alignItems: 'center', justifyContent: 'center' },
     navIconActive: { backgroundColor: p.navActive },
-    navLabel: { color: p.navText, fontSize: 14, fontWeight: '700' },
+    navLabel: { color: p.navText, fontSize: FONT.sm, fontWeight: '700' },
     navLabelActive: { color: p.secondary },
-    navStroke: { borderColor: p.navText },
-    navStrokeActive: { borderColor: p.primary },
-    navFill: { backgroundColor: p.navText },
-    navFillActive: { backgroundColor: p.primary },
-    navLedger: { width: 24, height: 27, borderWidth: 2, borderRadius: 4, paddingLeft: 7, paddingTop: 5, gap: 4 },
-    navLedgerSpine: { position: 'absolute', left: 5, top: 4, width: 2, height: 19, borderRadius: 1 },
-    navLine: { width: 11, height: 2, borderRadius: 1 },
-    navLineShort: { width: 7, height: 2, borderRadius: 1 },
-    navChart: { width: 27, height: 27, borderLeftWidth: 2, borderBottomWidth: 2, justifyContent: 'flex-end' },
-    navAxis: { position: 'absolute', left: 5, bottom: 4, width: 2, height: 16 },
-    navBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, paddingLeft: 7, paddingBottom: 3 },
-    navBarOne: { width: 4, height: 9, borderRadius: 2 },
-    navBarTwo: { width: 4, height: 14, borderRadius: 2 },
-    navBarThree: { width: 4, height: 19, borderRadius: 2 },
-    navCoin: { width: 27, height: 27, borderWidth: 2, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    navCoinText: { color: p.navText, fontWeight: '800', fontSize: 16 },
-    navCoinTextActive: { color: p.primary },
-    navBag: { width: 30, height: 30, alignItems: 'center' },
-    navBagHandle: { width: 13, height: 8, borderWidth: 2, borderBottomWidth: 0, borderTopLeftRadius: 7, borderTopRightRadius: 7 },
-    navBagBody: { width: 26, height: 21, borderWidth: 2, borderRadius: 6, marginTop: -1, alignItems: 'center', justifyContent: 'center' },
-    navBagText: { color: p.navText, fontSize: 11, fontWeight: '800' },
-    navBagTextActive: { color: p.primary },
-    navUser: { width: 30, height: 30 },
-    navUserHead: { position: 'absolute', left: 9, top: 1, width: 10, height: 10, borderWidth: 2, borderRadius: 5 },
-    navUserBody: { position: 'absolute', left: 3, top: 15, width: 18, height: 12, borderTopWidth: 2, borderLeftWidth: 2, borderRightWidth: 2, borderTopLeftRadius: 10, borderTopRightRadius: 10 },
-    navUserPlusH: { position: 'absolute', right: 1, bottom: 6, width: 11, height: 2, borderRadius: 1 },
-    navUserPlusV: { position: 'absolute', right: 5, bottom: 2, width: 2, height: 11, borderRadius: 1 },
   });
 }
 
