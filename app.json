@@ -2,7 +2,7 @@
   "expo": {
     "name": "竹简",
     "slug": "zhujian",
-    "version": "1.4.14",
+    "version": "1.4.15",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -11,7 +11,7 @@
     },
     "android": {
       "package": "com.luxn.offlineledger",
-      "versionCode": 84,
+      "versionCode": 85,
       "permissions": [],
       "blockedPermissions": [
         "android.permission.INTERNET",

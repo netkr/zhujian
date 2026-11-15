@@ -129,13 +129,17 @@ type Palette = {
   muted: string;
   primary: string;
   secondary: string;
-  accent: string;
   border: string;
   input: string;
   danger: string;
   nav: string;
   navActive: string;
   navText: string;
+  // 置于品牌填充色（primary/secondary）之上的前景色，保证对比度
+  onFill: string;
+  // 分类图（环形图/图例）的分类色板，随主题亮暗调整
+  chartExpense: string[];
+  chartIncome: string[];
 };
 
 const DB_NAME = 'zhujian.db';
@@ -184,15 +188,17 @@ const light: Palette = {
   softCard: '#EFE8DE',
   text: '#171717',
   muted: '#60646C',
-  primary: '#6B8A6F',
-  secondary: '#CD6F47',
-  accent: '#BDCEC0',
+  primary: '#4F6B53',
+  secondary: '#A8562F',
   border: '#DED8CE',
   input: '#F4EFE7',
   danger: '#B55B4D',
   nav: '#FFFDF8',
   navActive: '#EFE8DE',
   navText: '#4F4A43',
+  onFill: '#FFFFFF',
+  chartExpense: ['#6B8A6F', '#CD6F47', '#5A7B8C', '#9C8A4D', '#8A7B96', '#4F8A80', '#9C5F63', '#8B6E7E'],
+  chartIncome: ['#CD6F47', '#D98A62', '#C2744E', '#E0A37E', '#A65C3E', '#C39C86', '#D7B092', '#8A5F43'],
 };
 
 const dark: Palette = {
@@ -200,16 +206,18 @@ const dark: Palette = {
   card: '#2A2E20',
   softCard: '#4C311F',
   text: '#F6F0E7',
-  muted: '#C39C86',
-  primary: '#998B6F',
-  secondary: '#C2744E',
-  accent: '#7F8792',
+  muted: '#A6A39A',
+  primary: '#9DBFA3',
+  secondary: '#E0895C',
   border: '#5A656F',
   input: '#2A2E20',
   danger: '#CE9F8C',
   nav: '#1D1E11',
   navActive: '#4C311F',
   navText: '#F6F0E7',
+  onFill: '#17211A',
+  chartExpense: ['#95AD98', '#D78B6B', '#8CA7B5', '#C1B281', '#A296AB', '#87BAB2', '#B88A8D', '#AC96A2'],
+  chartIncome: ['#D78B6B', '#DA8E67', '#CF9173', '#DA9267', '#CC8E76', '#C09881', '#CC9B75', '#C19A80'],
 };
 
 const defaultExpenseTemplates: CategoryTemplate[] = [
@@ -460,7 +468,9 @@ export default function App() {
     const editingRecord = editingRecordId
       ? records.find((item) => item.id === editingRecordId)
       : null;
-    const secondaryUntouchedInEdit = editingRecord !== null && selectedSecondary === editingRecord.secondary;
+    const secondaryUntouchedInEdit = editingRecord
+      ? selectedSecondary === editingRecord.secondary
+      : false;
     if (!selectedSecondary && !secondaryUntouchedInEdit) {
       Alert.alert('缺少二级分类', '请选择二级分类。');
       return;
@@ -1103,7 +1113,7 @@ function FlowScreen({
       </Card>
       <Card styles={styles}>
         <Text style={styles.sectionTitle}>支出分类</Text>
-        {categories.length ? categories.map((item, index) => <CategoryRow key={item.label} styles={styles} item={item} index={index} />) : <Text style={styles.bodyText}>暂无分类统计。</Text>}
+        {categories.length ? categories.map((item, index) => <CategoryRow key={item.label} styles={styles} item={item} index={index} colors={palette.chartExpense} />) : <Text style={styles.bodyText}>暂无分类统计。</Text>}
       </Card>
       <View style={styles.listTitleRow}>
         <Text style={styles.sectionTitle}>最近流水</Text>
@@ -1272,6 +1282,7 @@ function ReportScreen({
         {categories.length ? (
           <CategoryAnalysis
             styles={styles}
+            palette={palette}
             categories={categories}
             tone={reportType}
             onSelectCategory={(primary) => onOpenLedger({
@@ -1360,7 +1371,7 @@ function AddScreen({
           addScrollRef.current?.scrollToEnd({ animated: true });
         }}
       >
-        <Text style={[styles.heroTitle, styles.addHeroTitle]}>{editing ? '修改流水' : '记一笔'}</Text>
+        <Text style={styles.heroTitle}>{editing ? '修改流水' : '记一笔'}</Text>
         {statusText ? <Text style={styles.bodyText}>{statusText}</Text> : null}
         <PillGroup
           styles={styles}
@@ -1950,9 +1961,9 @@ function SummaryPanel({
 
 function BottomNav({ palette, styles, active, onTab }: { palette: Palette; styles: ReturnType<typeof createStyles>; active: Tab; onTab: (tab: Tab) => void }) {
   const tabs: Array<[Tab, string]> = [
+    ['add', '记一笔'],
     ['flow', '流水'],
     ['report', '报表'],
-    ['add', '记一笔'],
     ['mine', '我的'],
   ];
   return (
@@ -2487,17 +2498,19 @@ function BarChart({
 
 function CategoryAnalysis({
   styles,
+  palette,
   categories,
   tone,
   onSelectCategory,
 }: {
   styles: ReturnType<typeof createStyles>;
+  palette: Palette;
   categories: Array<{ label: string; amount: number; count: number }>;
   tone: EntryType;
   onSelectCategory?: (primary: string) => void;
 }) {
   const total = Math.max(categories.reduce((sum, item) => sum + item.amount, 0), 1);
-  const colors = tone === 'income' ? incomeChartColors : expenseChartColors;
+  const colors = tone === 'income' ? palette.chartIncome : palette.chartExpense;
   return (
     <View style={styles.analysisWrap}>
       <DonutChart styles={styles} categories={categories} total={total} colors={colors} />
@@ -2555,14 +2568,14 @@ function CategoryRow({
   item,
   total,
   index = 0,
-  colors = expenseChartColors,
+  colors,
   onPress,
 }: {
   styles: ReturnType<typeof createStyles>;
   item: { label: string; amount: number; count: number };
   total?: number;
   index?: number;
-  colors?: string[];
+  colors: string[];
   onPress?: () => void;
 }) {
   const color = colors[index % colors.length];
@@ -3515,15 +3528,13 @@ function csvEscape(value: string | number) {
   return raw;
 }
 
-const expenseChartColors = ['#6B8A6F', '#CD6F47', '#5A7B8C', '#9C8A4D', '#8A7B96', '#4F8A80', '#9C5F63', '#8B6E7E'];
-const incomeChartColors = ['#CD6F47', '#D98A62', '#C2744E', '#E0A37E', '#A65C3E', '#C39C86', '#D7B092', '#8A5F43'];
-
 // 设计 token：集中管理 createStyles 可安全收敛的样式常量（仅做差 ≤2 的取值归一，几何约束值保留字面量）。
 const RADIUS = {
   sm: 8, // 小控件圆角：按钮、输入框、胶囊组
   md: 10, // 中圆角：筛选条、图标底、次级按钮
   lg: 12, // 卡片圆角
   xl: 20, // 大圆角：弹层与大面积容器
+  full: 9999, // 圆形/胶囊（半径取元素高度一半的等价写法）
 } as const;
 
 const FONT = {
@@ -3533,6 +3544,8 @@ const FONT = {
   lg: 20, // 区块标题
   xl: 22, // 弹层与页面大标题
   xxl: 32, // 特大标题数字
+  display: 36, // 大号数值（资产余额、记一笔金额）
+  huge: 42, // 特大金额（当月支出）
 } as const;
 
 const SPACE = {
@@ -3543,6 +3556,7 @@ const SPACE = {
   lg: 20, // 弹层内边距
   xl: 24, // 页面上下留白
   xxl: 28, // 大区块间距与留白
+  pageTop: 36, // 页面顶部留白（避开状态栏）
 } as const;
 
 function createStyles(p: Palette) {
@@ -3552,10 +3566,10 @@ function createStyles(p: Palette) {
     content: { flex: 1 },
     loadingScreen: { flex: 1, justifyContent: 'center', padding: SPACE.xl, gap: SPACE.sm },
     page: { flex: 1 },
-    pageBody: { paddingHorizontal: SPACE.md, paddingTop: 36, paddingBottom: SPACE.xl, gap: SPACE.md },
+    pageBody: { paddingHorizontal: SPACE.md, paddingTop: SPACE.pageTop, paddingBottom: SPACE.xl, gap: SPACE.md },
     addScreen: { flex: 1, backgroundColor: p.background },
     addPageBody: { paddingTop: SPACE.xl, paddingBottom: SPACE.md, gap: SPACE.xs },
-    ledgerHeader: { paddingHorizontal: SPACE.md, paddingTop: 36, paddingBottom: SPACE.sm, gap: SPACE.sm },
+    ledgerHeader: { paddingHorizontal: SPACE.md, paddingTop: SPACE.pageTop, paddingBottom: SPACE.sm, gap: SPACE.sm },
     ledgerFilterRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, backgroundColor: p.softCard, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.sm },
     ledgerFilterText: { flex: 1, color: p.text, fontSize: FONT.sm, fontWeight: '600' },
     ledgerFilterClear: { color: p.primary, fontSize: FONT.sm, fontWeight: '700' },
@@ -3564,43 +3578,27 @@ function createStyles(p: Palette) {
     ledgerSeparator: { height: 10 },
     heroHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.sm },
     heroTitle: { color: p.text, fontSize: FONT.xxl, fontWeight: '700', letterSpacing: -0.5 },
-    addHeroTitle: { fontSize: 29 },
     subtitle: { color: p.muted, fontSize: FONT.md, marginTop: SPACE.xxs },
     card: { backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.md, gap: SPACE.sm, borderWidth: 1, borderColor: p.border },
     sectionTitle: { color: p.text, fontSize: FONT.lg, fontWeight: '700', letterSpacing: -0.2 },
-    bodyText: { color: p.text, fontSize: FONT.sm, lineHeight: 23 },
+    bodyText: { color: p.text, fontSize: FONT.md, lineHeight: 25 },
     placeholderColor: { color: p.muted },
     summaryBlock: { gap: SPACE.md },
-    quickEntryRow: { flexDirection: 'row', gap: SPACE.sm },
-    quickEntryButton: { flex: 1, minHeight: 76, borderRadius: RADIUS.lg, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.sm, flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, borderWidth: 1 },
-    quickEntryExpense: { backgroundColor: p.card, borderColor: p.primary },
-    quickEntryIncome: { backgroundColor: p.card, borderColor: p.secondary },
-    quickEntryMark: { width: 34, height: 34, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
-    quickEntryExpenseMark: { backgroundColor: `${p.primary}1A` },
-    quickEntryIncomeMark: { backgroundColor: `${p.secondary}1A` },
-    quickEntryMarkText: { fontSize: FONT.xl, lineHeight: 28, fontWeight: '500' },
-    quickEntryExpenseText: { color: p.primary },
-    quickEntryIncomeText: { color: p.secondary },
-    quickEntryCopy: { flex: 1, gap: SPACE.xxs },
-    quickEntryTitle: { fontSize: FONT.md, fontWeight: '700' },
-    quickEntryHint: { color: p.muted, fontSize: FONT.xs },
-    quickEntryArrow: { fontSize: FONT.xl, fontWeight: '500' },
     summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
     summaryLabel: { color: p.muted, fontSize: FONT.md, fontWeight: '600' },
-    summaryAmount: { fontSize: 42, fontWeight: '700', marginTop: SPACE.xs, letterSpacing: -0.8 },
-    summaryAmountExpense: { color: p.primary },
+    summaryAmount: { fontSize: FONT.huge, fontWeight: '700', marginTop: SPACE.xs, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
     summaryAmountIncome: { color: p.secondary },
     summaryCount: { alignItems: 'flex-end' },
     summaryCountLabel: { color: p.muted, fontWeight: '700' },
-    summaryCountValue: { color: p.text, fontSize: FONT.lg, fontWeight: '700', marginTop: SPACE.xxs },
+    summaryCountValue: { color: p.text, fontSize: FONT.lg, fontWeight: '700', marginTop: SPACE.xxs, fontVariant: ['tabular-nums'] },
     splitTrack: { height: 8, borderRadius: RADIUS.sm, overflow: 'hidden', flexDirection: 'row', backgroundColor: p.softCard, gap: SPACE.xxs },
     splitIncome: { borderRadius: RADIUS.sm },
     splitExpense: { borderRadius: RADIUS.sm },
     metricRow: { flexDirection: 'row', gap: SPACE.xs },
-    miniMetric: { flex: 1, backgroundColor: p.card, borderRadius: RADIUS.sm, padding: SPACE.sm, gap: SPACE.xxs, borderWidth: 1, borderColor: p.border },
+    miniMetric: { flex: 1, backgroundColor: p.background, borderRadius: RADIUS.sm, padding: SPACE.sm, gap: SPACE.xxs },
     metricLabel: { color: p.muted, fontSize: FONT.sm, fontWeight: '600' },
-    incomeText: { color: p.secondary, fontSize: FONT.md, fontWeight: '600' },
-    expenseText: { color: p.primary, fontSize: FONT.md, fontWeight: '600' },
+    incomeText: { color: p.secondary, fontSize: FONT.md, fontWeight: '600', fontVariant: ['tabular-nums'] },
+    expenseText: { color: p.primary, fontSize: FONT.md, fontWeight: '600', fontVariant: ['tabular-nums'] },
     pillGroup: { flexDirection: 'row', backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.xxs, gap: SPACE.xxs, borderWidth: 1, borderColor: p.border },
     pillGroupWide: { width: '100%' },
     pill: { paddingVertical: SPACE.xs, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.sm },
@@ -3608,23 +3606,23 @@ function createStyles(p: Palette) {
     pillActive: { backgroundColor: p.background },
     pillActiveExpense: { backgroundColor: p.primary },
     pillActiveIncome: { backgroundColor: p.secondary },
-    pillText: { color: p.muted, fontSize: FONT.md, fontWeight: '500' },
+    pillText: { color: p.muted, fontSize: FONT.md, fontWeight: '600' },
     pillTextActive: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
-    pillTextToneActive: { color: '#FFFFFF' },
+    pillTextToneActive: { color: p.onFill },
     periodRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.xs },
     periodTitle: { flex: 1, color: p.text, fontSize: FONT.lg, fontWeight: '700' },
     periodValues: { width: '50%', gap: SPACE.xxs },
     periodAmountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.xs },
-    periodAmountValue: { flex: 1, textAlign: 'right' },
+    periodAmountValue: { flex: 1, textAlign: 'right', fontVariant: ['tabular-nums'] },
     chartHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.sm },
-    chartTotal: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
-    barViewport: { marginHorizontal: -4 },
+    chartTotal: { color: p.text, fontSize: FONT.sm, fontWeight: '700', fontVariant: ['tabular-nums'] },
+    barViewport: { marginHorizontal: -SPACE.xxs },
     barArea: { height: 172, flexDirection: 'row', alignItems: 'flex-end', gap: SPACE.xs, paddingTop: SPACE.xl, paddingHorizontal: SPACE.xxs, borderBottomWidth: 1, borderBottomColor: p.border },
     barCol: { flex: 1, minWidth: 26, alignItems: 'center', gap: SPACE.xxs },
     barColPressable: { borderRadius: RADIUS.sm },
     barColPressed: { opacity: 0.62 },
     bar: { width: 16, borderRadius: RADIUS.sm, backgroundColor: p.primary },
-    barValue: { color: p.text, fontSize: FONT.xs, fontWeight: '700' },
+    barValue: { color: p.text, fontSize: FONT.xs, fontWeight: '700', fontVariant: ['tabular-nums'] },
     barLabel: { color: p.muted, fontSize: FONT.xs },
     categoryStatRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.xs },
     categoryStatRowPressable: { borderRadius: RADIUS.sm },
@@ -3633,18 +3631,18 @@ function createStyles(p: Palette) {
     categoryStatMain: { flex: 1, gap: SPACE.xxs },
     categoryStatName: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
     categoryStatSub: { color: p.muted, fontSize: FONT.sm },
-    categoryAmount: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
-    progressTrack: { height: 5, borderRadius: 5, backgroundColor: p.border, overflow: 'hidden' },
-    progressFill: { height: 5, borderRadius: 5 },
+    categoryAmount: { color: p.text, fontSize: FONT.sm, fontWeight: '700', fontVariant: ['tabular-nums'] },
+    progressTrack: { height: 5, borderRadius: RADIUS.full, backgroundColor: p.border, overflow: 'hidden' },
+    progressFill: { height: 5, borderRadius: RADIUS.full },
     listTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     linkText: { color: p.primary, fontSize: FONT.md, fontWeight: '700' },
     recordRow: { backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.sm, flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, borderWidth: 1, borderColor: p.border },
-    recordIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: p.background, alignItems: 'center', justifyContent: 'center' },
+    recordIcon: { width: 42, height: 42, borderRadius: RADIUS.full, backgroundColor: p.background, alignItems: 'center', justifyContent: 'center' },
     recordMain: { flex: 1, gap: SPACE.xxs },
     recordTitle: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
     recordSub: { color: p.muted, fontSize: FONT.sm },
-    recordIncome: { color: p.secondary, fontWeight: '700', fontSize: FONT.md },
-    recordExpense: { color: p.primary, fontWeight: '700', fontSize: FONT.md },
+    recordIncome: { color: p.secondary, fontWeight: '700', fontSize: FONT.md, fontVariant: ['tabular-nums'] },
+    recordExpense: { color: p.primary, fontWeight: '700', fontSize: FONT.md, fontVariant: ['tabular-nums'] },
     monthSwitch: { flexDirection: 'row', gap: SPACE.xs, alignItems: 'center' },
     monthButton: { flex: 1, height: 44, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
     monthButtonText: { color: p.text, fontWeight: '600', fontSize: FONT.md },
@@ -3652,10 +3650,9 @@ function createStyles(p: Palette) {
     analysisWrap: { gap: SPACE.md },
     donutWrap: { alignSelf: 'center', width: 168, height: 168, alignItems: 'center', justifyContent: 'center' },
     donutTrack: { color: p.border },
-    donutCenter: { position: 'absolute', width: 104, height: 104, borderRadius: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
-    donutLike: { alignSelf: 'center', width: 142, height: 142, borderRadius: 71, borderWidth: 24, borderColor: p.primary, alignItems: 'center', justifyContent: 'center' },
+    donutCenter: { position: 'absolute', width: 104, height: 104, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
     donutLabel: { color: p.muted, fontSize: FONT.sm },
-    donutAmount: { color: p.text, fontWeight: '700', fontSize: FONT.md },
+    donutAmount: { color: p.text, fontWeight: '700', fontSize: FONT.md, fontVariant: ['tabular-nums'] },
     analysisList: { gap: SPACE.xxs },
     categorySectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: SPACE.xxs },
     categorySectionHeading: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
@@ -3667,30 +3664,28 @@ function createStyles(p: Palette) {
     recentCategoryChipIncomeActive: { backgroundColor: p.secondary, borderColor: p.secondary },
     recentCategoryPrimary: { color: p.text, fontSize: FONT.xs, fontWeight: '600' },
     recentCategorySecondary: { color: p.muted, fontSize: FONT.sm, fontWeight: '700' },
-    recentCategoryTextActive: { color: '#FFFFFF' },
+    recentCategoryTextActive: { color: p.onFill },
     sectionCaption: { color: p.muted, fontSize: FONT.sm, fontWeight: '700' },
-    categoryRail: { flexDirection: 'row', gap: SPACE.md, paddingVertical: 1 },
     categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: SPACE.sm, paddingVertical: 1 },
-    categoryItem: { width: 66, alignItems: 'center', gap: SPACE.xxs },
     categoryGridItem: { width: '25%', alignItems: 'center', gap: SPACE.xxs },
     categoryCircle: { width: 48, height: 48, borderRadius: RADIUS.lg, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center' },
     categoryCircleActiveExpense: { borderWidth: 2, borderColor: p.primary, backgroundColor: p.card },
     categoryCircleActiveIncome: { borderWidth: 2, borderColor: p.secondary, backgroundColor: p.card },
     categoryLabel: { color: p.text, fontWeight: '600', fontSize: FONT.sm, textAlign: 'center' },
     categoryLabelActive: { fontWeight: '700' },
-    secondaryBox: { flexDirection: 'row', gap: SPACE.xs, backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.xs, borderWidth: 1, borderColor: p.border },
+    secondaryBox: { flexDirection: 'row', gap: SPACE.xs, backgroundColor: p.background, borderRadius: RADIUS.lg, padding: SPACE.xs },
     secondaryChip: { borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.sm, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
     secondaryChipActive: { backgroundColor: p.primary, borderColor: p.primary },
     secondaryChipActiveIncome: { backgroundColor: p.secondary, borderColor: p.secondary },
     secondaryText: { color: p.text, fontWeight: '700' },
-    secondaryTextActive: { color: '#FFFFFF' },
+    secondaryTextActive: { color: p.onFill },
     dateEntry: { minHeight: 42, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: p.border, backgroundColor: p.background, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     dateEntryMain: { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs },
     dateEntryLabel: { color: p.muted, fontSize: FONT.sm, fontWeight: '700' },
     dateEntryValue: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
     dateEntryAction: { color: p.primary, fontSize: FONT.sm, fontWeight: '700' },
     dateSheetBackdrop: { flex: 1, backgroundColor: 'rgba(20,20,20,0.34)', justifyContent: 'flex-end' },
-    dateSheet: { backgroundColor: p.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 20, paddingBottom: SPACE.xxl, gap: SPACE.md },
+    dateSheet: { backgroundColor: p.card, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl, gap: SPACE.md },
     dateSheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     dateSheetTitle: { color: p.text, fontSize: FONT.xl, fontWeight: '700' },
     dateSheetClose: { color: p.primary, fontSize: FONT.md, fontWeight: '700' },
@@ -3699,8 +3694,7 @@ function createStyles(p: Palette) {
     dateQuickButton: { width: '30%', height: 44, borderRadius: RADIUS.md, borderWidth: 1, borderColor: p.border, backgroundColor: p.background, alignItems: 'center', justifyContent: 'center' },
     dateQuickText: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
     dateCalendarButton: { height: 48, borderRadius: RADIUS.md, backgroundColor: p.primary, alignItems: 'center', justifyContent: 'center' },
-    dateCalendarButtonText: { color: '#FFFFFF', fontSize: FONT.md, fontWeight: '700' },
-    addAmountCard: { backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.sm, gap: SPACE.xs, borderWidth: 1, borderColor: p.border },
+    dateCalendarButtonText: { color: p.onFill, fontSize: FONT.md, fontWeight: '700' },
     addDetailsCard: { backgroundColor: p.card, borderRadius: RADIUS.lg, padding: SPACE.sm, gap: SPACE.xs, borderWidth: 1, borderColor: p.border },
     addMoreToggle: { minHeight: 46, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs, borderRadius: RADIUS.md, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     addMoreCopy: { gap: SPACE.xxs },
@@ -3708,7 +3702,7 @@ function createStyles(p: Palette) {
     addMoreHint: { color: p.muted, fontSize: FONT.xs },
     addMoreAction: { color: p.primary, fontSize: FONT.sm, fontWeight: '700' },
     addKeypadDock: { backgroundColor: p.background, borderTopWidth: 1, borderTopColor: p.border, paddingHorizontal: SPACE.md, paddingTop: SPACE.xs, paddingBottom: SPACE.xs, gap: SPACE.xs },
-    amountLarge: { color: p.primary, fontSize: 34, fontWeight: '700', letterSpacing: -0.4 },
+    amountLarge: { color: p.primary, fontSize: FONT.display, fontWeight: '700', letterSpacing: -0.4 },
     amountIncome: { color: p.secondary },
     noteInput: { backgroundColor: p.input, borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.sm, minHeight: 42, paddingHorizontal: SPACE.sm, color: p.text, fontSize: FONT.md },
     keypad: { gap: SPACE.xs },
@@ -3718,45 +3712,44 @@ function createStyles(p: Palette) {
     keyPrimaryIncome: { backgroundColor: p.secondary, borderColor: p.secondary },
     keyDisabled: { backgroundColor: p.border, opacity: 0.45 },
     keyText: { color: p.text, fontWeight: '700', fontSize: FONT.xl },
-    keyPrimaryText: { color: '#FFFFFF' },
+    keyPrimaryText: { color: p.onFill },
     keyDisabledText: { color: p.muted },
     assetCard: { backgroundColor: p.primary, borderRadius: RADIUS.lg, padding: SPACE.md, gap: SPACE.md },
-    assetTitle: { color: '#FFFFFF', fontSize: FONT.xl, fontWeight: '700' },
-    assetSub: { color: '#FFFFFF', opacity: 0.85, fontSize: FONT.md },
-    assetBalance: { color: '#FFFFFF', fontSize: 36, fontWeight: '700', marginVertical: SPACE.xs },
-    assetGrid: { backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: RADIUS.lg, padding: SPACE.md, flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },
+    assetTitle: { color: p.onFill, fontSize: FONT.xl, fontWeight: '700' },
+    assetSub: { color: p.onFill, opacity: 0.85, fontSize: FONT.md },
+    assetBalance: { color: p.onFill, fontSize: FONT.display, fontWeight: '700', marginVertical: SPACE.xs, fontVariant: ['tabular-nums'] },
+    assetGrid: { backgroundColor: `${p.onFill}24`, borderRadius: RADIUS.lg, padding: SPACE.md, flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },
     assetMetric: { width: '47%', gap: SPACE.xxs },
     assetMetricFull: { width: '100%' },
-    assetMetricLabel: { color: '#FFFFFF', opacity: 0.72, fontSize: FONT.sm },
-    assetMetricValue: { color: '#FFFFFF', fontSize: FONT.md, fontWeight: '700' },
+    assetMetricLabel: { color: p.onFill, opacity: 0.9, fontSize: FONT.sm },
+    assetMetricValue: { color: p.onFill, fontSize: FONT.md, fontWeight: '700', fontVariant: ['tabular-nums'] },
     actionButton: { backgroundColor: p.primary, borderRadius: RADIUS.lg, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
-    actionButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: FONT.sm },
+    actionButtonText: { color: p.onFill, fontWeight: '700', fontSize: FONT.sm },
     settingsRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.sm },
     settingsIcon: { width: 42, height: 42, borderRadius: RADIUS.lg, backgroundColor: p.card, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center' },
     settingsMain: { flex: 1, gap: SPACE.xxs },
     settingsTitle: { color: p.text, fontSize: FONT.md, fontWeight: '700' },
-    securityHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
     securityStatusGrid: { flexDirection: 'row', gap: SPACE.xs },
-    securityStatusCard: { flex: 1, borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.md, backgroundColor: p.input, padding: SPACE.sm, gap: SPACE.xxs },
+    securityStatusCard: { flex: 1, borderRadius: RADIUS.md, backgroundColor: p.background, padding: SPACE.sm, gap: SPACE.xxs },
     securityStatusLabel: { color: p.muted, fontSize: FONT.xs, fontWeight: '700' },
-    securityStatusValue: { color: p.text, fontSize: FONT.sm, fontWeight: '800' },
+    securityStatusValue: { color: p.text, fontSize: FONT.sm, fontWeight: '700' },
     securityStatusActive: { color: p.primary },
     securityPasscodeRow: { flexDirection: 'row', gap: SPACE.xs, alignItems: 'center' },
     securityInput: { flex: 1, height: 48, backgroundColor: p.input, borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, color: p.text, fontSize: FONT.md },
     securityPrimaryButton: { width: 78, height: 48, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', backgroundColor: p.primary },
-    securityPrimaryText: { color: '#FFFFFF', fontWeight: '800', fontSize: FONT.sm },
+    securityPrimaryText: { color: p.onFill, fontWeight: '700', fontSize: FONT.sm },
     securityModeGroup: { flexDirection: 'row', borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.lg, overflow: 'hidden', backgroundColor: p.card },
     securityModeButton: { flex: 1, height: 46, alignItems: 'center', justifyContent: 'center' },
     securityModeActive: { backgroundColor: p.navActive },
-    securityModeText: { color: p.muted, fontSize: FONT.sm, fontWeight: '800' },
+    securityModeText: { color: p.muted, fontSize: FONT.sm, fontWeight: '700' },
     securityModeTextActive: { color: p.text },
     securityActions: { flexDirection: 'row', gap: SPACE.xs },
     securityActionButton: { flex: 1, height: 46, borderRadius: RADIUS.md, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
-    securityActionText: { color: p.text, fontWeight: '800', fontSize: FONT.sm },
-    smallButton: { borderRadius: RADIUS.lg, borderWidth: 1, borderColor: p.border, paddingHorizontal: SPACE.md, height: 40, justifyContent: 'center' },
+    securityActionText: { color: p.text, fontWeight: '700', fontSize: FONT.sm },
+    smallButton: { borderRadius: RADIUS.lg, borderWidth: 1, borderColor: p.border, paddingHorizontal: SPACE.md, height: 44, justifyContent: 'center' },
     smallButtonText: { color: p.text, fontWeight: '700' },
     fullButton: { backgroundColor: p.primary, borderRadius: RADIUS.lg, height: 50, alignItems: 'center', justifyContent: 'center' },
-    fullButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: FONT.md },
+    fullButtonText: { color: p.onFill, fontWeight: '700', fontSize: FONT.md },
     outlineFullButton: { borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.lg, height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
     outlineFullButtonText: { color: p.text, fontWeight: '700', fontSize: FONT.md },
     dangerFullButton: { height: 48, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: p.danger, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
@@ -3765,9 +3758,6 @@ function createStyles(p: Palette) {
     manageCardActive: { borderColor: p.primary },
     manageHead: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
     manageBody: { gap: SPACE.sm },
-    manageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.xs },
-    manageAction: { borderWidth: 1, borderColor: p.border, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
-    manageActionText: { color: p.primary, fontWeight: '700' },
     dangerText: { color: p.danger },
     secondaryRow: { backgroundColor: p.background, borderRadius: RADIUS.md, padding: SPACE.sm, flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
     secondaryRowTitle: { flex: 1, color: p.text, fontWeight: '700', fontSize: FONT.md },
@@ -3776,11 +3766,11 @@ function createStyles(p: Palette) {
     inlineForm: { flexDirection: 'row', gap: SPACE.xs, alignItems: 'center' },
     inlineInput: { flex: 1, minHeight: 46, backgroundColor: p.card, borderColor: p.border, borderWidth: 1, borderRadius: RADIUS.sm, color: p.text, paddingHorizontal: SPACE.sm, fontSize: FONT.md },
     inlineButton: { height: 46, paddingHorizontal: SPACE.md, backgroundColor: p.primary, borderRadius: RADIUS.sm, justifyContent: 'center' },
-    inlineButtonText: { color: '#FFFFFF', fontWeight: '700' },
+    inlineButtonText: { color: p.onFill, fontWeight: '700' },
     logRow: { paddingVertical: SPACE.xs, borderBottomWidth: 1, borderBottomColor: p.border, gap: SPACE.xxs },
     lockScreen: { flex: 1, padding: SPACE.xxl, justifyContent: 'center', gap: SPACE.xxl },
     passDots: { flexDirection: 'row', justifyContent: 'center', gap: SPACE.md },
-    passDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: p.border },
+    passDot: { width: 14, height: 14, borderRadius: RADIUS.full, borderWidth: 1, borderColor: p.border },
     passDotFilled: { backgroundColor: p.primary, borderColor: p.primary },
     lockKeypad: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm },
     lockKey: { width: '30.5%', height: 62, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: p.border, alignItems: 'center', justifyContent: 'center', backgroundColor: p.card },
@@ -3790,7 +3780,7 @@ function createStyles(p: Palette) {
     navIconWrap: { width: 56, height: 42, borderRadius: RADIUS.xl, alignItems: 'center', justifyContent: 'center' },
     navIconActive: { backgroundColor: p.navActive },
     navLabel: { color: p.navText, fontSize: FONT.sm, fontWeight: '700' },
-    navLabelActive: { color: p.secondary },
+    navLabelActive: { color: p.primary },
   });
 }
 

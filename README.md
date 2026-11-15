@@ -6,7 +6,7 @@
 
 ## 特色
 
-- 简约：界面围绕“流水、报表、记一笔、我的”展开，入口清晰，减少不必要的干扰。
+- 简约：界面围绕“记一笔、流水、报表、我的”展开，入口清晰，减少不必要的干扰。
 - 实用：支持支出、收入记录，一级/二级分类管理，月度、年度和总计报表，本地资产概览。
 - 隐私：APK 不申请联网权限，数据导入、导出和备份都通过 Android 系统文件选择器在本机完成。
 - 安全：支持四位数字密码、系统生物识别、本地备份与加密备份，适合保存个人账本数据。
@@ -22,13 +22,14 @@
 - 数据导出：支持导出 CSV，便于用表格软件查看或二次整理。
 - 本地备份：支持导出和恢复备份包，导入前会自动创建本机备份。
 - 本地安全：支持本地锁和系统生物识别，降低他人直接查看账本的风险。
+- 外观主题：跟随系统自动切换浅色 / 深色主题。
 
 ## 下载
 
 当前版本 APK：
 
-- 官方下载：[zhujian-rn-v1.4.14.apk](https://github.com/netkr/zhujian/releases/download/v1.4.14/zhujian-rn-v1.4.14.apk)
-- 国内加速备用：[ghfast.top](https://ghfast.top/https://github.com/netkr/zhujian/releases/download/v1.4.14/zhujian-rn-v1.4.14.apk)
+- 官方下载：[zhujian-rn-v1.4.15.apk](https://github.com/netkr/zhujian/releases/download/v1.4.15/zhujian-rn-v1.4.15.apk)
+- 国内加速备用：[ghfast.top](https://ghfast.top/https://github.com/netkr/zhujian/releases/download/v1.4.15/zhujian-rn-v1.4.15.apk)
 
 加速链接由第三方代理提供，仅用于公开 APK 下载。如果链接失效，请优先使用官方下载。
 
