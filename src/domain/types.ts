@@ -86,3 +86,19 @@ export type ParsedImportRecord = {
   account: string;
   categoryUnmatched?: string;
 };
+
+export type ImportLog = {
+  id: number;
+  fileName: string;
+  importedCount: number;
+  skippedCount: number;
+  createdAt: string;
+  message: string;
+};
+
+export type AppSettings = {
+  startEntry: 'flow' | 'report' | 'add' | 'mine';
+  lockMode: 'immediate' | '5min';
+  passcodeEnabled: boolean;
+  biometricEnabled: boolean;
+};
