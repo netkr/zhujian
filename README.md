@@ -54,7 +54,7 @@
 
 ## 项目状态
 
-仓库包含竹简的源码、项目说明与 APK 安装包，源码基于 React Native（Expo）开发。
+仓库包含竹简的源码与项目说明，源码基于 React Native（Expo）开发。APK 安装包随 GitHub Releases 发布，不放入代码仓库。
 
 ## 从源码构建
 

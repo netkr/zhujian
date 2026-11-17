@@ -56,3 +56,6 @@ yarn-error.*
 *.iml
 /android/app/src/main/assets/index.android.bundle
 **/build/
+
+# 发布用 APK 不入库，只随 GitHub Releases 发布
+/zhujian*.apk
