@@ -1,0 +1,290 @@
+[
+  {
+    "name": "expense-basic",
+    "row": {
+      "交易类型": "支出",
+      "金额": "25.50",
+      "分类": "餐饮",
+      "备注": "午饭",
+      "日期": "2026-03-05"
+    },
+    "expected": {
+      "type": "expense",
+      "amount": 25.5,
+      "primary": "餐饮食品",
+      "secondary": "正餐",
+      "note": "午饭",
+      "account": "本地账户",
+      "date": "2026-03-04T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "income-columns",
+    "row": {
+      "交易类型": "收入",
+      "收入金额": "8000",
+      "一级分类": "工资薪酬",
+      "二级分类": "工资",
+      "备注": "三月工资",
+      "日期": "2026年3月1日"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 8000,
+      "primary": "工资薪酬",
+      "secondary": "工资",
+      "note": "三月工资",
+      "account": "本地账户",
+      "date": "2026-02-28T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "generic-amount-negative",
+    "row": {
+      "金额": "-42.00",
+      "分类": "交通出行",
+      "备注": "打车",
+      "日期": "2026/03/02"
+    },
+    "expected": {
+      "type": "expense",
+      "amount": 42,
+      "primary": "交通出行",
+      "secondary": "公交地铁",
+      "note": "打车",
+      "account": "本地账户",
+      "date": "2026-03-01T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "parenthesized-amount",
+    "row": {
+      "金额": "(123.45)",
+      "分类": "医疗健康",
+      "日期": "2026-03-03"
+    },
+    "expected": {
+      "type": "expense",
+      "amount": 123.45,
+      "primary": "医疗健康",
+      "secondary": "药品",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-02T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "excel-serial-date",
+    "row": {
+      "金额": "10",
+      "分类": "餐饮食品>饮料咖啡",
+      "日期": 45000
+    },
+    "expected": {
+      "type": "income",
+      "amount": 10,
+      "primary": "其他收入",
+      "secondary": "其他",
+      "categoryUnmatched": "餐饮食品>饮料咖啡",
+      "note": "",
+      "account": "本地账户",
+      "date": "2023-03-15T00:00:00.000Z"
+    }
+  },
+  {
+    "name": "unmatched-category",
+    "row": {
+      "金额": "88",
+      "分类": "外星消费",
+      "日期": "2026-03-06"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 88,
+      "primary": "其他收入",
+      "secondary": "其他",
+      "categoryUnmatched": "外星消费",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-05T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "income-inferred-from-category",
+    "row": {
+      "类型": "",
+      "金额": "500",
+      "分类": "工资",
+      "日期": "2026-03-07"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 500,
+      "primary": "工资薪酬",
+      "secondary": "工资",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-06T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "header-normalization",
+    "row": {
+      " 交易 金额 ": "66",
+      "分 类": "交通",
+      "日 期": "2026.03.08"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 66,
+      "primary": "其他收入",
+      "secondary": "其他",
+      "categoryUnmatched": "交通",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-07T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "currency-and-comma-amount",
+    "row": {
+      "金额": "¥1,234.50",
+      "分类": "红包",
+      "备注": "生日"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 1234.5,
+      "primary": "红包礼金",
+      "secondary": "红包",
+      "note": "生日",
+      "account": "本地账户",
+      "date": ""
+    }
+  },
+  {
+    "name": "primary-secondary-account",
+    "row": {
+      "交易类型": "支出",
+      "金额": "30",
+      "一级分类": "日用家居",
+      "二级分类": "日常用品",
+      "账户": "招商银行",
+      "日期": "2026-03-09"
+    },
+    "expected": {
+      "type": "expense",
+      "amount": 30,
+      "primary": "日用家居",
+      "secondary": "日常用品",
+      "note": "",
+      "account": "招商银行",
+      "date": "2026-03-08T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "datetime-with-time",
+    "row": {
+      "交易时间": "2026-03-01 12:30",
+      "金额": "12"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 12,
+      "primary": "其他收入",
+      "secondary": "其他",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-01T04:30:00.000Z"
+    }
+  },
+  {
+    "name": "missing-amount",
+    "row": {
+      "分类": "餐饮",
+      "日期": "2026-03-10"
+    },
+    "expected": {
+      "type": "expense",
+      "amount": 0,
+      "primary": "餐饮食品",
+      "secondary": "正餐",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-09T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "alias-described-secondary",
+    "row": {
+      "金额": "20",
+      "一级分类": "其他收入",
+      "二级分类": "退税",
+      "日期": "2026-03-11"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 20,
+      "primary": "退款赔偿",
+      "secondary": "个税退税",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-10T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "positive-amount-expense-category",
+    "row": {
+      "金额": "+1 000",
+      "分类": "教育",
+      "日期": "2026-03-12"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 1000,
+      "primary": "其他收入",
+      "secondary": "其他",
+      "categoryUnmatched": "教育",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-11T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "expense-column-only",
+    "row": {
+      "支出金额": "9.9",
+      "分类": "餐饮食品",
+      "二级分类": "零食",
+      "日期": "2026-03-13"
+    },
+    "expected": {
+      "type": "expense",
+      "amount": 9.9,
+      "primary": "餐饮食品",
+      "secondary": "零食",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-12T16:00:00.000Z"
+    }
+  },
+  {
+    "name": "bt-category-two-labels",
+    "row": {
+      "金额": "7",
+      "一级分类": "交通出行",
+      "二级分类": "公交地铁",
+      "日期": "2026-03-14"
+    },
+    "expected": {
+      "type": "income",
+      "amount": 7,
+      "primary": "其他收入",
+      "secondary": "其他",
+      "categoryUnmatched": "交通出行 公交地铁 交通出行",
+      "note": "",
+      "account": "本地账户",
+      "date": "2026-03-13T16:00:00.000Z"
+    }
+  }
+]

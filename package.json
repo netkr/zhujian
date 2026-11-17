@@ -22,15 +22,20 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/node": "^26.6.6",
     "@types/react": "~19.2.2",
     "playwright": "^1.61.1",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "private": true
 }

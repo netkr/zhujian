@@ -29,81 +29,55 @@ import {
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 import * as XLSX from 'xlsx';
 
+import { categoryIcon, defaultExpenseTemplates, defaultIncomeTemplates, groupCategories } from './src/domain/categories';
+import {
+  addDays,
+  addMonths,
+  addYears,
+  evaluateAmount,
+  formatDate,
+  formatDateTime,
+  formatFileDate,
+  formatMonth,
+  formatShortDate,
+  money,
+  rangeTitle,
+  recordsToCsv,
+  sameDay,
+  sameMonth,
+  sameWeek,
+  shortMoney,
+  startOfMonth,
+  trendTitle,
+  trimAmount,
+} from './src/domain/format';
+import { csvToObjects, makeDedupKey, makeImportKey, mapImportObject } from './src/domain/import';
+import {
+  drilldownForTrend,
+  drilldownRangeLabel,
+  filterByDrilldown,
+  filterByRange,
+  getFrequentTemplates,
+  getRecentCategories,
+  getSummary,
+  groupByCategory,
+  groupByDay,
+  groupByTrend,
+} from './src/domain/stats';
+import type {
+  CategoryTemplate,
+  DbCategory,
+  EntryType,
+  IconName,
+  LedgerDrilldownFilter,
+  LedgerRecord,
+  ParsedImportRecord,
+  Range,
+} from './src/domain/types';
+
 type Tab = 'flow' | 'report' | 'add' | 'mine';
-type EntryType = 'expense' | 'income';
-type Range = 'month' | 'year' | 'all';
 type SubPage = 'categories' | 'import' | 'security' | 'records' | 'assets' | null;
 type LockMode = 'immediate' | '5min';
-type LedgerDrilldownFilter = {
-  type: EntryType;
-  range: Range;
-  anchor: string;
-  label: string;
-  primary?: string;
-  day?: string;
-};
-type IconName =
-  | 'food'
-  | 'traffic'
-  | 'leisure'
-  | 'work'
-  | 'clothes'
-  | 'home'
-  | 'phone'
-  | 'child'
-  | 'medical'
-  | 'pet'
-  | 'risk'
-  | 'social'
-  | 'bank'
-  | 'misc'
-  | 'briefcase'
-  | 'coin'
-  | 'gift'
-  | 'luck'
-  | 'shop'
-  | 'tag'
-  | 'ledger'
-  | 'download'
-  | 'lock'
-  | 'privacy'
-  | 'rocket'
-  | 'travel'
-  | 'household'
-  | 'finance'
-  | 'investment'
-  | 'business'
-  | 'refund'
-  | 'asset'
-  | 'loan'
-  | 'incomeMisc';
-
-type LedgerRecord = {
-  id: number;
-  type: EntryType;
-  amount: number;
-  primary: string;
-  secondary: string;
-  note: string;
-  date: string;
-  account: string;
-};
-
-type DbCategory = {
-  id: number;
-  type: EntryType;
-  primary: string;
-  secondary: string;
-  icon: string;
-  sortOrder: number;
-  isBuiltin: number;
-};
-
-type CategoryTemplate = {
-  primary: string;
-  icon: string;
-  children: string[];
-};
 
 type ImportLog = {
   id: number;
@@ -219,37 +193,6 @@ const dark: Palette = {
   chartExpense: ['#95AD98', '#D78B6B', '#8CA7B5', '#C1B281', '#A296AB', '#87BAB2', '#B88A8D', '#AC96A2'],
   chartIncome: ['#D78B6B', '#DA8E67', '#CF9173', '#DA9267', '#CC8E76', '#C09881', '#CC9B75', '#C19A80'],
 };
-
-const defaultExpenseTemplates: CategoryTemplate[] = [
-  { primary: '餐饮食品', icon: 'food', children: ['正餐', '买菜', '水果', '零食', '饮料咖啡', '烟酒茶'] },
-  { primary: '居住物业', icon: 'home', children: ['房租', '水电燃气', '物业费', '搬家中介', '家庭维修'] },
-  { primary: '交通出行', icon: 'traffic', children: ['公交地铁', '打车租车', '长途交通', '油费', '停车过路', '保养', '车险车贷', '罚款'] },
-  { primary: '旅行度假', icon: 'travel', children: ['住宿', '旅游活动', '景点门票', '签证换汇', '购物'] },
-  { primary: '日用家居', icon: 'household', children: ['日常用品', '家具家电', '保洁', '维修杂项', '生活支出'] },
-  { primary: '数码通讯', icon: 'phone', children: ['手机电脑', '数码配件', '软件会员', '话费', '宽带网络', '快递邮寄'] },
-  { primary: '服饰美容', icon: 'clothes', children: ['衣服鞋帽', '箱包', '饰品', '理发', '护肤洗护'] },
-  { primary: '医疗健康', icon: 'medical', children: ['药品', '就医', '体检保健', '运动健身'] },
-  { primary: '学习工作', icon: 'work', children: ['培训考试', '书籍资料', '办公用品', '职业服务', 'AI工具'] },
-  { primary: '娱乐休闲', icon: 'leisure', children: ['游戏', '影视演出', '玩乐', '聚会娱乐', '博彩彩票'] },
-  { primary: '人情社交', icon: 'social', children: ['送礼', '红包随礼', '请客', '慈善捐助', '婚丧礼金'] },
-  { primary: '宠物', icon: 'pet', children: ['食品', '用品', '医疗', '服务'] },
-  { primary: '财务税费', icon: 'finance', children: ['银行手续费', '保险', '社保税费', '罚金'] },
-  { primary: '投资理财', icon: 'investment', children: ['基金股票', '理财产品', '申购', '亏损'] },
-  { primary: '经营业务', icon: 'business', children: ['进货采购', '设备', '软件', '办公', '业务杂费'] },
-  { primary: '其他支出', icon: 'misc', children: ['丢失损失', '杂项'] },
-];
-
-const defaultIncomeTemplates: CategoryTemplate[] = [
-  { primary: '工资薪酬', icon: 'briefcase', children: ['工资', '劳务报酬'] },
-  { primary: '奖金补贴', icon: 'coin', children: ['年终奖', '绩效奖金', '津贴补助'] },
-  { primary: '经营收入', icon: 'shop', children: ['商品销售', '服务收入', '经营回款'] },
-  { primary: '投资理财收入', icon: 'investment', children: ['利息', '分红', '理财收益'] },
-  { primary: '红包礼金', icon: 'gift', children: ['红包', '生日礼金', '婚礼礼金', '家庭赠与', '生活费'] },
-  { primary: '退款赔偿', icon: 'refund', children: ['消费退款', '房租退款', '个税退税', '保险理赔', '赔偿金'] },
-  { primary: '资产处置', icon: 'asset', children: ['二手出售', '资产变现'] },
-  { primary: '借款回款', icon: 'loan', children: ['借款收回'] },
-  { primary: '其他收入', icon: 'incomeMisc', children: ['其他'] },
-];
 
 const defaultSettings: AppSettings = {
   startEntry: 'flow',
@@ -765,21 +708,12 @@ export default function App() {
       await db.withTransactionAsync(async () => {
         // 内容查重（与 import_key/行序无关）：7 个业务列完全相同即视为重复。
         // 归一化：金额 Number(x).toFixed(2)（与导出口径一致）；库侧 note/secondary/account 的 NULL 统一按空串比较。
-        const normalizeDupKey = (
-          type: string,
-          amount: number,
-          primary: string,
-          secondary: string,
-          note: string | null,
-          date: string,
-          account: string | null,
-        ) => [type, Number(amount).toFixed(2), primary, secondary, note ?? '', date, account ?? ''].join('\u241F');
         const existingKeys = new Set<string>();
         const existingRows = await db.getAllAsync<DbRecordRow>(
           'SELECT type, amount, primary_name, secondary_name, note, date, account FROM records',
         );
         for (const row of existingRows) {
-          existingKeys.add(normalizeDupKey(row.type, row.amount, row.primary_name, row.secondary_name, row.note, row.date, row.account));
+          existingKeys.add(makeDedupKey(row.type, row.amount, row.primary_name, row.secondary_name, row.note, row.date, row.account));
         }
         for (const [index, item] of parsed.entries()) {
           if (!item.amount || !item.date) {
@@ -787,7 +721,7 @@ export default function App() {
             continue;
           }
           const now = new Date().toISOString();
-          const dupKey = normalizeDupKey(item.type, Math.abs(item.amount), item.primary, item.secondary, item.note, item.date, item.account || '本地账户');
+          const dupKey = makeDedupKey(item.type, Math.abs(item.amount), item.primary, item.secondary, item.note, item.date, item.account || '本地账户');
           if (existingKeys.has(dupKey)) {
             duplicates += 1;
             continue;
@@ -3044,50 +2978,6 @@ async function ensureCategory(db: SQLite.SQLiteDatabase, type: EntryType, primar
   );
 }
 
-function groupCategories(categories: DbCategory[], type: EntryType): CategoryTemplate[] {
-  const map = new Map<string, CategoryTemplate>();
-  categories.filter((item) => item.type === type).forEach((item) => {
-    if (!map.has(item.primary)) {
-      map.set(item.primary, { primary: item.primary, icon: item.icon, children: [] });
-    }
-    const current = map.get(item.primary);
-    if (current && !current.children.includes(item.secondary)) {
-      current.children.push(item.secondary);
-    }
-  });
-  return Array.from(map.values());
-}
-
-type ParsedImportRecord = {
-  type: EntryType;
-  amount: number;
-  primary: string;
-  secondary: string;
-  note: string;
-  date: string;
-  account: string;
-  categoryUnmatched?: string;
-};
-
-function makeImportKey(index: number, record: ParsedImportRecord) {
-  const source = [
-    index,
-    record.type,
-    record.amount.toFixed(2),
-    record.primary,
-    record.secondary,
-    record.note,
-    record.date,
-    record.account,
-  ].join('\u241F');
-  let hash = 2166136261;
-  for (let offset = 0; offset < source.length; offset += 1) {
-    hash ^= source.charCodeAt(offset);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `v1-${(hash >>> 0).toString(36)}`;
-}
-
 async function parsePickedTable(uri: string, name: string): Promise<ParsedImportRecord[]> {
   const lower = name.toLowerCase();
   if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
@@ -3105,399 +2995,6 @@ async function parsePickedTable(uri: string, name: string): Promise<ParsedImport
   return csvToObjects(text).map(mapImportObject);
 }
 
-function mapImportObject(row: Record<string, unknown>): ParsedImportRecord {
-  const normalized = new Map<string, unknown>();
-  Object.entries(row).forEach(([key, value]) => normalized.set(normalizeHeader(key), value));
-  const typeField = pickField(normalized, ['交易类型', '收支类型', '账目类型', '类型', '收支', '收入支出', '方向', 'type', '工作表', 'sheet']);
-  const incomeField = pickField(normalized, ['收入金额', '收入', '流入', '入账', '收款', '贷方', 'credit']);
-  const expenseField = pickField(normalized, ['支出金额', '支出', '流出', '出账', '付款', '借方', 'debit']);
-  const genericAmountField = pickField(normalized, ['金额', '交易金额', '发生金额', '账目金额', 'money', 'amount']);
-  const categoryField = pickField(normalized, ['完整分类', '收支分类', '账目分类', '项目分类', '分类名称', '分类', '类别', 'category']);
-  const primaryField = pickField(normalized, ['一级分类', '一级类别', '主分类', '父分类', '大类', '分类1', 'category1', 'primary']);
-  const secondaryField = pickField(normalized, ['二级分类', '二级类别', '子分类', '小类', '分类2', 'category2', 'secondary']);
-  const typeRaw = cellString(typeField.value);
-  const incomeAmount = parseAmount(cellString(incomeField.value));
-  const expenseAmount = parseAmount(cellString(expenseField.value));
-  const amountRaw = cellString(genericAmountField.value || incomeField.value || expenseField.value);
-  const signedAmount = parseAmount(amountRaw);
-  const categoryRaw = cellString(categoryField.value);
-  const primaryRaw = cellString(primaryField.value);
-  const secondaryRaw = cellString(secondaryField.value);
-  const type = inferImportType({
-    typeRaw,
-    signedAmount,
-    incomeAmount,
-    expenseAmount,
-    categoryText: [categoryRaw, primaryRaw, secondaryRaw].join(' '),
-  });
-  const { primary, secondary, matched: categoryMatched } = resolveImportCategory(type, primaryRaw, secondaryRaw, categoryRaw);
-  const rawCategoryText = [primaryRaw, secondaryRaw, categoryRaw].map((value) => value.trim()).filter(Boolean).join(' ');
-  const date = parseImportDate(pickValue(normalized, ['日期', '时间', '交易时间', '记账时间', '创建时间', '发生时间', 'date'])) ?? '';
-  return {
-    type,
-    amount: Math.abs(incomeAmount || expenseAmount || signedAmount),
-    primary,
-    secondary,
-    categoryUnmatched: !categoryMatched && rawCategoryText ? rawCategoryText : undefined,
-    note: cellString(pickValue(normalized, ['备注', '说明', 'note', '商户', '商家', '项目', '摘要'])),
-    account: cellString(pickValue(normalized, ['账户', '支出账户', '收入账户', '付款账户', '收款账户', 'account'])) || '本地账户',
-    date,
-  };
-}
-
-function pickValue(map: Map<string, unknown>, keys: string[]) {
-  return pickField(map, keys).value;
-}
-
-function pickField(map: Map<string, unknown>, keys: string[]) {
-  const normalizedKeys = keys.map(normalizeHeader);
-  for (const key of keys) {
-    const value = map.get(normalizeHeader(key));
-    if (hasImportValue(value)) return { key: normalizeHeader(key), value };
-  }
-  for (const [header, value] of map.entries()) {
-    if (!hasImportValue(value)) continue;
-    // Only accept a source header that contains a requested alias. The reverse
-    // match makes the generic "金额" column look like "收入金额" or "支出金额".
-    if (normalizedKeys.some((key) => header.includes(key))) {
-      return { key: header, value };
-    }
-  }
-  return { key: '', value: '' };
-}
-
-function hasImportValue(value: unknown) {
-  return value !== undefined && value !== null && String(value).trim() !== '';
-}
-
-function normalizeHeader(value: string) {
-  return value.replace(/[\s_\-—:：/\\｜|,，.。()（）\[\]【】]/g, '').toLowerCase();
-}
-
-function cellString(value: unknown) {
-  if (value instanceof Date) return value.toISOString();
-  return String(value ?? '').trim();
-}
-
-function parseAmount(value: string) {
-  const clean = value.replace(/[¥￥,\s+]/g, '').replace(/^\((.*)\)$/, '-$1');
-  const parsed = Number(clean);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function inferImportType({
-  typeRaw,
-  signedAmount,
-  incomeAmount,
-  expenseAmount,
-  categoryText,
-}: {
-  typeRaw: string;
-  signedAmount: number;
-  incomeAmount: number;
-  expenseAmount: number;
-  categoryText: string;
-}): EntryType {
-  const normalizedType = normalizeHeader(typeRaw);
-  const normalizedCategory = normalizeHeader(categoryText);
-  const incomeWords = ['收入', '收款', '入账', '进账', '流入', '贷方', '工资', '奖金', '利息收入', '投资收入', '兼职收入', '经营所得'];
-  const expenseWords = ['支出', '付款', '消费', '出账', '流出', '借方'];
-  const explicitIncome = incomeWords.some((word) => normalizedType.includes(normalizeHeader(word)));
-  const explicitExpense = expenseWords.some((word) => normalizedType.includes(normalizeHeader(word)));
-  if (incomeAmount > 0 && !expenseAmount) return 'income';
-  if (expenseAmount > 0 && !incomeAmount) return 'expense';
-  if (explicitIncome && !explicitExpense) return 'income';
-  if (explicitExpense && !explicitIncome) return 'expense';
-  if (incomeWords.some((word) => normalizedCategory.includes(normalizeHeader(word)))) return 'income';
-  if (signedAmount < 0) return 'expense';
-  if (signedAmount > 0) return 'income';
-  return 'expense';
-}
-
-function resolveImportCategory(type: EntryType, primaryRaw: string, secondaryRaw: string, categoryRaw: string) {
-  const templates = type === 'income' ? defaultIncomeTemplates : defaultExpenseTemplates;
-  const fallback = templates.find((template) => template.primary === (type === 'income' ? '其他收入' : '其他支出')) ?? templates[0];
-  const split = categoryRaw
-    .split(/[>＞\/\\｜|,，;；\-—]/)
-    .map(cleanCategoryName)
-    .filter(Boolean)
-    .filter((item) => !['收入', '支出', '转账', '收支'].includes(item));
-  // Legacy exports often use a broad primary category such as "其他收入".
-  // Prefer the more specific secondary category before falling back to it.
-  const primaryCandidate = cleanCategoryName(primaryRaw);
-  const specificCandidates = [secondaryRaw, ...split]
-    .map(cleanCategoryName)
-    .filter((candidate) => Boolean(candidate) && candidate !== primaryCandidate);
-
-  for (const candidate of specificCandidates) {
-    const matched = findCategoryByAnyName(templates, candidate);
-    if (matched) return { ...matched, matched: true };
-  }
-
-  const alias = findImportCategoryAlias(type, [...specificCandidates, primaryCandidate].filter(Boolean).join(' '));
-  if (alias) return { ...alias, matched: true };
-
-  if (primaryCandidate) {
-    const matched = findCategoryByAnyName(templates, primaryCandidate);
-    if (matched) return { ...matched, matched: true };
-  }
-
-  return {
-    primary: fallback.primary,
-    secondary: fallback.children[fallback.children.length - 1],
-    matched: false,
-  };
-}
-
-function findImportCategoryAlias(type: EntryType, raw: string) {
-  const normalized = normalizeHeader(raw);
-  const aliases = type === 'income'
-    ? [
-        { words: ['工资收入', '薪资', '薪水', 'salary'], primary: '工资薪酬', secondary: '工资' },
-        { words: ['兼职', '副业'], primary: '工资薪酬', secondary: '劳务报酬' },
-        { words: ['劳务'], primary: '工资薪酬', secondary: '劳务报酬' },
-        { words: ['年终奖'], primary: '奖金补贴', secondary: '年终奖' },
-        { words: ['绩效', '奖金', '加班'], primary: '奖金补贴', secondary: '绩效奖金' },
-        { words: ['津贴', '补助'], primary: '奖金补贴', secondary: '津贴补助' },
-        { words: ['商品销售', '卖货'], primary: '经营收入', secondary: '商品销售' },
-        { words: ['服务收入'], primary: '经营收入', secondary: '服务收入' },
-        { words: ['经营', '经营所得', '生意', '回款'], primary: '经营收入', secondary: '经营回款' },
-        { words: ['利息', '分红', '基金收益', '投资收益', '理财收益'], primary: '投资理财收入', secondary: '利息' },
-        { words: ['红包'], primary: '红包礼金', secondary: '红包' },
-        { words: ['礼金收入'], primary: '红包礼金', secondary: '婚礼礼金' },
-        { words: ['生日礼金'], primary: '红包礼金', secondary: '生日礼金' },
-        { words: ['婚礼礼金', '礼金'], primary: '红包礼金', secondary: '婚礼礼金' },
-        { words: ['赠与'], primary: '红包礼金', secondary: '家庭赠与' },
-        { words: ['生活费'], primary: '红包礼金', secondary: '生活费' },
-        { words: ['消费退款'], primary: '退款赔偿', secondary: '消费退款' },
-        { words: ['房租退款'], primary: '退款赔偿', secondary: '房租退款' },
-        { words: ['退税'], primary: '退款赔偿', secondary: '个税退税' },
-        { words: ['理赔'], primary: '退款赔偿', secondary: '保险理赔' },
-        { words: ['赔偿'], primary: '退款赔偿', secondary: '赔偿金' },
-        { words: ['闲鱼'], primary: '资产处置', secondary: '二手出售' },
-        { words: ['二手'], primary: '资产处置', secondary: '二手出售' },
-        { words: ['变现'], primary: '资产处置', secondary: '资产变现' },
-        { words: ['他人还款'], primary: '借款回款', secondary: '借款收回' },
-        { words: ['借款收回', '收回借款'], primary: '借款回款', secondary: '借款收回' },
-        { words: ['麻将收入', '赌球收入', '信用卡还款', '意外来钱'], primary: '其他收入', secondary: '其他' },
-        { words: ['股息'], primary: '投资理财收入', secondary: '分红' },
-      ]
-    : [
-        { words: ['餐饮', '食品酒水', '吃喝', '美食', '食物', '早午晚餐'], primary: '餐饮食品', secondary: '正餐' },
-        { words: ['烟酒', '茶'], primary: '餐饮食品', secondary: '烟酒茶' },
-        { words: ['水果'], primary: '餐饮食品', secondary: '水果' },
-        { words: ['零食'], primary: '餐饮食品', secondary: '零食' },
-        { words: ['咖啡', '饮料', '甜品'], primary: '餐饮食品', secondary: '饮料咖啡' },
-        { words: ['菜市场', '买菜'], primary: '餐饮食品', secondary: '买菜' },
-        { words: ['公交', '地铁', '公共交通'], primary: '交通出行', secondary: '公交地铁' },
-        { words: ['打车', '出租车', '网约车', '租车'], primary: '交通出行', secondary: '打车租车' },
-        { words: ['高铁', '长途交通', '火车', '机票'], primary: '交通出行', secondary: '长途交通' },
-        { words: ['加油', '油费'], primary: '交通出行', secondary: '油费' },
-        { words: ['停车', '过路', '过路费'], primary: '交通出行', secondary: '停车过路' },
-        { words: ['保养'], primary: '交通出行', secondary: '保养' },
-        { words: ['车险', '车贷'], primary: '交通出行', secondary: '车险车贷' },
-        { words: ['交通罚款'], primary: '交通出行', secondary: '罚款' },
-        { words: ['交通', '出行'], primary: '交通出行', secondary: '公交地铁' },
-        { words: ['住宿', '酒店'], primary: '旅行度假', secondary: '住宿' },
-        { words: ['门票', '景点'], primary: '旅行度假', secondary: '景点门票' },
-        { words: ['签证', '换汇'], primary: '旅行度假', secondary: '签证换汇' },
-        { words: ['旅游', '旅行', '度假'], primary: '旅行度假', secondary: '旅游活动' },
-        { words: ['旅游购物'], primary: '旅行度假', secondary: '购物' },
-        { words: ['家具', '家电'], primary: '日用家居', secondary: '家具家电' },
-        { words: ['清洁', '保洁'], primary: '日用家居', secondary: '保洁' },
-        { words: ['维修保养', '家庭维修'], primary: '日用家居', secondary: '维修杂项' },
-        { words: ['日常用品', '家居'], primary: '日用家居', secondary: '日常用品' },
-        { words: ['手机', '电脑'], primary: '数码通讯', secondary: '手机电脑' },
-        { words: ['数码装备', '数码配件'], primary: '数码通讯', secondary: '数码配件' },
-        { words: ['数码'], primary: '数码通讯', secondary: '数码配件' },
-        { words: ['会员', '软件'], primary: '数码通讯', secondary: '软件会员' },
-        { words: ['话费', '手机费', '座机费'], primary: '数码通讯', secondary: '话费' },
-        { words: ['宽带', '网络', '上网费'], primary: '数码通讯', secondary: '宽带网络' },
-        { words: ['快递', '邮寄'], primary: '数码通讯', secondary: '快递邮寄' },
-        { words: ['衣服', '服饰', '鞋帽', '衣服裤子'], primary: '服饰美容', secondary: '衣服鞋帽' },
-        { words: ['箱包', '鞋帽包包'], primary: '服饰美容', secondary: '箱包' },
-        { words: ['饰品', '化妆'], primary: '服饰美容', secondary: '饰品' },
-        { words: ['理发', '美容'], primary: '服饰美容', secondary: '理发' },
-        { words: ['护肤', '洗护'], primary: '服饰美容', secondary: '护肤洗护' },
-        { words: ['药品', '药品费'], primary: '医疗健康', secondary: '药品' },
-        { words: ['就医', '治疗', '医院', '治疗费'], primary: '医疗健康', secondary: '就医' },
-        { words: ['体检', '保健', '保健费'], primary: '医疗健康', secondary: '体检保健' },
-        { words: ['健身', '运动'], primary: '医疗健康', secondary: '运动健身' },
-        { words: ['培训', '考试', '课程', '培训进修'], primary: '学习工作', secondary: '培训考试' },
-        { words: ['书籍', '资料', '书报杂志'], primary: '学习工作', secondary: '书籍资料' },
-        { words: ['办公'], primary: '学习工作', secondary: '办公用品' },
-        { words: ['职业', '工作'], primary: '学习工作', secondary: '职业服务' },
-        { words: ['ai', '人工智能'], primary: '学习工作', secondary: 'AI工具' },
-        { words: ['游戏', '电子游戏'], primary: '娱乐休闲', secondary: '游戏' },
-        { words: ['电影', '影视', '演出'], primary: '娱乐休闲', secondary: '影视演出' },
-        { words: ['聚会', '腐败聚会'], primary: '娱乐休闲', secondary: '聚会娱乐' },
-        { words: ['博彩', '彩票', '麻将'], primary: '娱乐休闲', secondary: '博彩彩票' },
-        { words: ['娱乐', '休闲'], primary: '娱乐休闲', secondary: '玩乐' },
-        { words: ['送礼请客'], primary: '人情社交', secondary: '请客' },
-        { words: ['送礼', '孝敬家长'], primary: '人情社交', secondary: '送礼' },
-        { words: ['红包随礼', '随礼'], primary: '人情社交', secondary: '红包随礼' },
-        { words: ['请客', '送礼请客'], primary: '人情社交', secondary: '请客' },
-        { words: ['慈善', '捐助'], primary: '人情社交', secondary: '慈善捐助' },
-        { words: ['婚丧', '礼金'], primary: '人情社交', secondary: '婚丧礼金' },
-        { words: ['宠物食品'], primary: '宠物', secondary: '食品' },
-        { words: ['宠物用品'], primary: '宠物', secondary: '用品' },
-        { words: ['宠物医疗'], primary: '宠物', secondary: '医疗' },
-        { words: ['宠物', '宠物宝贝'], primary: '宠物', secondary: '服务' },
-        { words: ['手续费', '银行手续'], primary: '财务税费', secondary: '银行手续费' },
-        { words: ['保险'], primary: '财务税费', secondary: '保险' },
-        { words: ['社保', '税费'], primary: '财务税费', secondary: '社保税费' },
-        { words: ['罚金'], primary: '财务税费', secondary: '罚金' },
-        { words: ['基金', '股票'], primary: '投资理财', secondary: '基金股票' },
-        { words: ['理财'], primary: '投资理财', secondary: '理财产品' },
-        { words: ['申购'], primary: '投资理财', secondary: '申购' },
-        { words: ['投资亏损'], primary: '投资理财', secondary: '亏损' },
-        { words: ['进货', '采购'], primary: '经营业务', secondary: '进货采购' },
-        { words: ['经营设备'], primary: '经营业务', secondary: '设备' },
-        { words: ['经营软件'], primary: '经营业务', secondary: '软件' },
-        { words: ['经营办公'], primary: '经营业务', secondary: '办公' },
-        { words: ['房租', '房租费', '租金', '租房', '房屋租金', '住房'], primary: '居住物业', secondary: '房租' },
-        { words: ['水电', '水电费', '水费', '电费', '燃气', '燃气费', '天然气', '暖气费', '取暖费'], primary: '居住物业', secondary: '水电燃气' },
-        { words: ['物业费', '物业管理', '物业管理费', '小区物业'], primary: '居住物业', secondary: '物业费' },
-        { words: ['搬家', '搬家公司', '房屋中介', '房产中介', '中介费'], primary: '居住物业', secondary: '搬家中介' },
-        { words: ['房屋维修', '家电维修', '管道疏通', '开锁', '防水补漏'], primary: '居住物业', secondary: '家庭维修' },
-        { words: ['居家', '日用百货', '日用品', '生活用品'], primary: '日用家居', secondary: '日常用品' },
-        { words: ['家政', '保洁服务', '家庭保洁'], primary: '日用家居', secondary: '保洁' },
-        { words: ['购物', '网购', '电商'], primary: '日用家居', secondary: '日常用品' },
-        { words: ['育儿', '母婴', '奶粉', '尿不湿', '儿童用品'], primary: '日用家居', secondary: '日常用品' },
-        { words: ['通讯', '通讯费', '通信费', '手机话费', '话费充值'], primary: '数码通讯', secondary: '话费' },
-        { words: ['宽带费', '网费', '网络费'], primary: '数码通讯', secondary: '宽带网络' },
-        { words: ['快递费', '物流', '运费'], primary: '数码通讯', secondary: '快递邮寄' },
-        { words: ['人情往来', '份子钱', '人情'], primary: '人情社交', secondary: '红包随礼' },
-        { words: ['聚餐', '饭局', '招待'], primary: '人情社交', secondary: '请客' },
-        { words: ['捐赠', '公益'], primary: '人情社交', secondary: '慈善捐助' },
-        { words: ['学习', '教育培训', '学费', '培训班', '培训费'], primary: '学习工作', secondary: '培训考试' },
-        { words: ['图书', '买书', '学习资料'], primary: '学习工作', secondary: '书籍资料' },
-        { words: ['服装', '衣物'], primary: '服饰美容', secondary: '衣服鞋帽' },
-        { words: ['美妆', '化妆品', '护肤品'], primary: '服饰美容', secondary: '护肤洗护' },
-        { words: ['金融', '理财产品'], primary: '投资理财', secondary: '理财产品' },
-        { words: ['银行手续费'], primary: '财务税费', secondary: '银行手续费' },
-        { words: ['公积金', '个税', '纳税'], primary: '财务税费', secondary: '社保税费' },
-        { words: ['保险费'], primary: '财务税费', secondary: '保险' },
-        { words: ['宠物粮', '猫粮', '狗粮'], primary: '宠物', secondary: '食品' },
-        { words: ['猫砂'], primary: '宠物', secondary: '用品' },
-        { words: ['宠物医院', '宠物看病'], primary: '宠物', secondary: '医疗' },
-        { words: ['宠物服务', '宠物寄养', '宠物美容'], primary: '宠物', secondary: '服务' },
-        { words: ['医疗', '医疗健康', '看病', '门诊', '住院', '挂号费'], primary: '医疗健康', secondary: '就医' },
-        { words: ['买药', '药费', '药店'], primary: '医疗健康', secondary: '药品' },
-        { words: ['健身房', '运动健身'], primary: '医疗健康', secondary: '运动健身' },
-        { words: ['保健品'], primary: '医疗健康', secondary: '体检保健' },
-        { words: ['生活支出', '生活开销'], primary: '日用家居', secondary: '生活支出' },
-      ];
-  return aliases.find((item) => item.words.some((word) => normalized.includes(normalizeHeader(word)))) ?? null;
-}
-
-function cleanCategoryName(value: string) {
-  return value.replace(/\s+/g, '').replace(/^[-—>＞/\\｜|]+|[-—>＞/\\｜|]+$/g, '').trim();
-}
-
-function findCategoryByAnyName(templates: CategoryTemplate[], value: string) {
-  if (!value) return null;
-  for (const template of templates) {
-    if (template.primary === value) return { primary: template.primary, secondary: template.children[0] };
-    const secondary = template.children.find((child) => child === value);
-    if (secondary) return { primary: template.primary, secondary };
-  }
-  return null;
-}
-
-function findPrimaryBySecondary(templates: CategoryTemplate[], secondary: string) {
-  return templates.find((template) => template.children.includes(secondary))?.primary;
-}
-
-function parseImportDate(value: unknown) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return new Date(Math.round((value - 25569) * 86400 * 1000)).toISOString();
-  }
-  const raw = cellString(value);
-  if (!raw) return null;
-  const clean = raw
-    .replace(/[年月]/g, '-')
-    .replace(/[日]/g, '')
-    .replace(/\//g, '-')
-    .replace(/\./g, '-')
-    .trim();
-  const localMatch = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
-  if (localMatch) {
-    const [, year, month, day, hour = '0', minute = '0', second = '0'] = localMatch;
-    return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)).toISOString();
-  }
-  const parsed = new Date(clean);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
-function csvToObjects(text: string) {
-  const rows = parseCsv(text.replace(/^\uFEFF/, ''));
-  if (rows[0]?.[0]?.toLowerCase().startsWith('sep=')) rows.shift();
-  const headerIndex = findHeaderRow(rows);
-  const headers = rows[headerIndex] ?? [];
-  return rows
-    .slice(headerIndex + 1)
-    .filter((row) => row.some((cell) => cell.trim()))
-    .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ''])));
-}
-
-function findHeaderRow(rows: string[][]) {
-  let bestIndex = 0;
-  let bestScore = -1;
-  rows.slice(0, 20).forEach((row, index) => {
-    const joined = normalizeHeader(row.join('|'));
-    const score = [
-      '日期',
-      '时间',
-      '金额',
-      '收入',
-      '支出',
-      '交易类型',
-      '分类',
-      '一级分类',
-      '二级分类',
-      '备注',
-    ].reduce((sum, key) => sum + (joined.includes(normalizeHeader(key)) ? 1 : 0), 0);
-    if (score > bestScore) {
-      bestScore = score;
-      bestIndex = index;
-    }
-  });
-  return bestIndex;
-}
-
-function parseCsv(text: string) {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = '';
-  let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
-    if (char === '"' && quoted && next === '"') {
-      cell += '"';
-      index += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === ',' && !quoted) {
-      row.push(cell);
-      cell = '';
-    } else if ((char === '\n' || char === '\r') && !quoted) {
-      if (char === '\r' && next === '\n') index += 1;
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = '';
-    } else {
-      cell += char;
-    }
-  }
-  row.push(cell);
-  rows.push(row);
-  return rows;
-}
-
 async function createCsvBackup(db: SQLite.SQLiteDatabase) {
   const dir = `${FileSystem.documentDirectory}backups/`;
   await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => undefined);
@@ -3509,23 +3006,7 @@ async function createCsvBackup(db: SQLite.SQLiteDatabase) {
 
 async function exportRecordsCsv(db: SQLite.SQLiteDatabase) {
   const records = await fetchRecords(db);
-  const header = ['日期', '交易类型', '一级分类', '二级分类', '账户', '金额', '备注'];
-  const lines = records.map((record) => [
-    formatDateTime(record.date),
-    record.type === 'income' ? '收入' : '支出',
-    record.primary,
-    record.secondary,
-    record.account,
-    record.amount.toFixed(2),
-    record.note,
-  ]);
-  return [header, ...lines].map((row) => row.map(csvEscape).join(',')).join('\n');
-}
-
-function csvEscape(value: string | number) {
-  const raw = String(value ?? '');
-  if (/[",\n\r]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
-  return raw;
+  return recordsToCsv(records);
 }
 
 // 设计 token：集中管理 createStyles 可安全收敛的样式常量（仅做差 ≤2 的取值归一，几何约束值保留字面量）。
@@ -3784,296 +3265,3 @@ function createStyles(p: Palette) {
   });
 }
 
-function getSummary(records: LedgerRecord[]) {
-  return records.reduce(
-    (summary, record) => {
-      if (record.type === 'income') summary.income += record.amount;
-      else summary.expense += record.amount;
-      return summary;
-    },
-    { income: 0, expense: 0 },
-  );
-}
-
-function groupByDay(records: LedgerRecord[]) {
-  const map = new Map<number, number>();
-  records.forEach((record) => {
-    const date = new Date(record.date);
-    const day = date.getDate();
-    map.set(day, (map.get(day) ?? 0) + record.amount);
-  });
-  return Array.from(map.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([day, amount]) => ({ label: `${day}日`, amount }));
-}
-
-function groupByTrend(records: LedgerRecord[], month: Date, range: Range) {
-  if (range === 'year') {
-    const map = new Map<number, number>();
-    records.forEach((record) => {
-      const date = new Date(record.date);
-      const monthIndex = date.getMonth() + 1;
-      map.set(monthIndex, (map.get(monthIndex) ?? 0) + record.amount);
-    });
-    return Array.from(map.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([monthIndex, amount]) => ({ label: `${monthIndex}月`, amount }));
-  }
-  if (range === 'all') {
-    const map = new Map<number, number>();
-    records.forEach((record) => {
-      const date = new Date(record.date);
-      const year = date.getFullYear();
-      map.set(year, (map.get(year) ?? 0) + record.amount);
-    });
-    return Array.from(map.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([year, amount]) => ({ label: `${year}`, amount }));
-  }
-  return groupByDay(records.filter((record) => sameMonth(record.date, month)));
-}
-
-function groupByCategory(records: LedgerRecord[]) {
-  const map = new Map<string, { label: string; amount: number; count: number }>();
-  records.forEach((record) => {
-    const key = record.primary || '其他';
-    const current = map.get(key) ?? { label: key, amount: 0, count: 0 };
-    current.amount += record.amount;
-    current.count += 1;
-    map.set(key, current);
-  });
-  return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
-}
-
-function getFrequentTemplates(records: LedgerRecord[], templates: CategoryTemplate[], type: EntryType, selectedPrimary: string) {
-  const counts = new Map<string, number>();
-  records.filter((record) => record.type === type).forEach((record) => {
-    counts.set(record.primary, (counts.get(record.primary) ?? 0) + 1);
-  });
-  const ordered = templates
-    .map((template, index) => ({ template, index, count: counts.get(template.primary) ?? 0 }))
-    .sort((left, right) => right.count - left.count || left.index - right.index)
-    .map((item) => item.template);
-  const frequent = ordered.slice(0, 4);
-  const selected = templates.find((template) => template.primary === selectedPrimary);
-  if (selected && !frequent.some((template) => template.primary === selected.primary)) {
-    return [...frequent.slice(0, 3), selected];
-  }
-  return frequent;
-}
-
-function getRecentCategories(records: LedgerRecord[], templates: CategoryTemplate[], type: EntryType) {
-  const available = new Map(templates.map((template) => [template.primary, new Set(template.children)]));
-  const seen = new Set<string>();
-  const recent: Array<{ primary: string; secondary: string }> = [];
-  [...records]
-    .filter((record) => record.type === type)
-    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
-    .forEach((record) => {
-      const children = available.get(record.primary);
-      const key = `${record.primary}/${record.secondary}`;
-      if (!children?.has(record.secondary) || seen.has(key)) return;
-      seen.add(key);
-      recent.push({ primary: record.primary, secondary: record.secondary });
-    });
-  return recent.slice(0, 4);
-}
-
-function filterByRange(records: LedgerRecord[], month: Date, range: Range) {
-  if (range === 'all') return records;
-  if (range === 'year') return records.filter((record) => new Date(record.date).getFullYear() === month.getFullYear());
-  return records.filter((record) => sameMonth(record.date, month));
-}
-
-function filterByDrilldown(records: LedgerRecord[], filter: LedgerDrilldownFilter | null) {
-  if (!filter) return records;
-  return filterByRange(records, new Date(filter.anchor), filter.range).filter((record) => {
-    if (record.type !== filter.type) return false;
-    if (filter.primary && record.primary !== filter.primary) return false;
-    return !filter.day || sameDay(record.date, new Date(filter.day));
-  });
-}
-
-function drilldownRangeLabel(month: Date, range: Range) {
-  if (range === 'year') return `${month.getFullYear()}年`;
-  if (range === 'all') return '全部时间';
-  return formatMonth(month);
-}
-
-function drilldownForTrend(label: string, type: EntryType, range: Range, month: Date): LedgerDrilldownFilter {
-  const number = Number(label.replace(/[^\d]/g, ''));
-  if (range === 'year') {
-    const anchor = new Date(month.getFullYear(), Math.max(number - 1, 0), 1);
-    return { type, range: 'month', anchor: anchor.toISOString(), label: `${formatMonth(anchor)} · ${type === 'expense' ? '支出' : '收入'}` };
-  }
-  if (range === 'all') {
-    const anchor = new Date(number, 0, 1);
-    return { type, range: 'year', anchor: anchor.toISOString(), label: `${number}年 · ${type === 'expense' ? '支出' : '收入'}` };
-  }
-  const anchor = new Date(month.getFullYear(), month.getMonth(), Math.max(number, 1));
-  return { type, range: 'month', anchor: anchor.toISOString(), day: anchor.toISOString(), label: `${formatDate(anchor)} · ${type === 'expense' ? '支出' : '收入'}` };
-}
-
-function sameMonth(date: string | Date, month: Date) {
-  const target = new Date(date);
-  return target.getFullYear() === month.getFullYear() && target.getMonth() === month.getMonth();
-}
-
-function sameDay(date: string | Date, day: Date) {
-  const target = new Date(date);
-  return target.getFullYear() === day.getFullYear() && target.getMonth() === day.getMonth() && target.getDate() === day.getDate();
-}
-
-function sameWeek(date: string | Date, day: Date) {
-  const target = new Date(date);
-  const start = new Date(day);
-  start.setDate(day.getDate() - ((day.getDay() + 6) % 7));
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-  return target >= start && target < end;
-}
-
-function startOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function lastDayOfMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function addMonths(date: Date, months: number) {
-  const year = date.getFullYear();
-  const month = date.getMonth() + months;
-  return new Date(year, month, Math.min(date.getDate(), lastDayOfMonth(year, month)), date.getHours(), date.getMinutes(), date.getSeconds());
-}
-
-function addYears(date: Date, years: number) {
-  const year = date.getFullYear() + years;
-  const month = date.getMonth();
-  return new Date(year, month, Math.min(date.getDate(), lastDayOfMonth(year, month)), date.getHours(), date.getMinutes(), date.getSeconds());
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(date.getDate() + days);
-  return next;
-}
-
-function formatMonth(date: Date) {
-  return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月`;
-}
-
-function formatDate(date: Date) {
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
-}
-
-function formatShortDate(date: string) {
-  const target = new Date(date);
-  return `${target.getMonth() + 1}月${target.getDate()}日`;
-}
-
-function formatDateTime(date: string) {
-  const target = new Date(date);
-  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')} ${String(target.getHours()).padStart(2, '0')}:${String(target.getMinutes()).padStart(2, '0')}`;
-}
-
-function formatFileDate(date: Date) {
-  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`;
-}
-
-function money(amount: number) {
-  const sign = amount < 0 ? '-' : '';
-  return `${sign}¥${Math.abs(amount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function shortMoney(amount: number) {
-  if (amount >= 10000) return `${Math.round(amount / 1000) / 10}万`;
-  if (amount >= 1000) return `${Math.round(amount / 100) / 10}千`;
-  return `${Math.round(amount)}`;
-}
-
-function trimAmount(amount: number) {
-  return amount.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
-}
-
-function rangeTitle(range: Range) {
-  if (range === 'year') return '年度';
-  if (range === 'all') return '全部';
-  return '月度';
-}
-
-function trendTitle(range: Range, label: string) {
-  if (range === 'year') return `每月${label}趋势`;
-  if (range === 'all') return `年度${label}趋势`;
-  return `每日${label}趋势`;
-}
-
-function evaluateAmount(input: string) {
-  if (!input) return 0;
-  const tokens = input.match(/(\d+(?:\.\d+)?|[+-])/g);
-  if (!tokens?.length) return 0;
-  let total = Number(tokens[0]) || 0;
-  for (let index = 1; index < tokens.length - 1; index += 2) {
-    const operator = tokens[index];
-    const value = Number(tokens[index + 1]) || 0;
-    total = operator === '-' ? total - value : total + value;
-  }
-  return Math.round(total * 100) / 100;
-}
-
-function categoryIcon(primary: string, type: EntryType = 'expense'): IconName {
-  const name = categoryIconMap[primary];
-  if (name) return name;
-  return type === 'income' ? 'coin' : 'tag';
-}
-
-const categoryIconMap: Record<string, IconName> = {
-  餐饮: 'food',
-  食品酒水: 'food',
-  餐饮食品: 'food',
-  交通: 'traffic',
-  行车交通: 'traffic',
-  交通出行: 'traffic',
-  旅行度假: 'travel',
-  娱乐: 'leisure',
-  休闲娱乐: 'leisure',
-  娱乐休闲: 'leisure',
-  学习办公: 'work',
-  工作学习: 'work',
-  学习工作: 'work',
-  购物: 'clothes',
-  衣服饰品: 'clothes',
-  服饰美容: 'clothes',
-  生活缴费: 'home',
-  居家物业: 'home',
-  居住物业: 'home',
-  日用家居: 'household',
-  交流通讯: 'phone',
-  数码通讯: 'phone',
-  养娃成本: 'child',
-  医疗: 'medical',
-  医疗保健: 'medical',
-  医疗健康: 'medical',
-  宠物消费: 'pet',
-  宠物: 'pet',
-  风险管理: 'risk',
-  投资理财: 'investment',
-  人情往来: 'social',
-  人情社交: 'social',
-  金融保险: 'bank',
-  财务税费: 'finance',
-  经营业务: 'business',
-  其他杂项: 'misc',
-  其他支出: 'misc',
-  职业收入: 'briefcase',
-  工资薪酬: 'briefcase',
-  奖金补贴: 'coin',
-  经营收入: 'shop',
-  投资理财收入: 'investment',
-  红包礼金: 'gift',
-  退款赔偿: 'refund',
-  资产处置: 'asset',
-  借款回款: 'loan',
-  其他收入: 'incomeMisc',
-};
